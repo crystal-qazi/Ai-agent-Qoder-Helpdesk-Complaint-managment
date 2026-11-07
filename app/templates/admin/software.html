@@ -1,16 +1,14 @@
 {% extends 'layouts/base.html' %}
 
 {% block title %}Software Catalog{% endblock %}
+{% block page_title %}Software Catalog{% endblock %}
+{% block page_description %}Track software, licenses, and expiry across the hospital.{% endblock %}
+{% block page_actions %}
+<a href="{{ url_for('admin.create_software') }}" class="btn btn-primary">+ New Software</a>
+{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900">Software Catalog</h1>
-            <p class="mt-1 text-sm text-gray-500">Track software, licenses, and expiry across the hospital.</p>
-        </div>
-        <a href="{{ url_for('admin.create_software') }}" class="btn btn-primary">+ New Software</a>
-    </div>
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
     <div class="overflow-x-auto">

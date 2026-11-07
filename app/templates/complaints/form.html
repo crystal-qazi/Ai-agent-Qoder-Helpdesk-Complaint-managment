@@ -3,18 +3,11 @@
 {% set c = complaint if complaint is defined and complaint else none %}
 
 {% block title %}{{ 'Edit' if c else 'New' }} Complaint{% endblock %}
+{% block page_title %}{{ 'Edit' if c else 'New' }} Complaint{% endblock %}
+{% block page_description %}{% if c %}Update the details of {{ c.complaint_number }}.{% else %}Report an IT issue to the helpdesk.{% endif %}{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto">
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900">{{ 'Edit' if c else 'New' }} Complaint</h1>
-            <p class="mt-1 text-sm text-gray-500">
-                {% if c %}Update the details of {{ c.complaint_number }}.{% else %}Report an IT issue to the helpdesk.{% endif %}
-            </p>
-        </div>
-    </div>
-
     <form method="POST" action="" enctype="multipart/form-data" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 

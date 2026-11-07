@@ -1,21 +1,19 @@
 {% extends 'layouts/base.html' %}
 
 {% block title %}Departments{% endblock %}
-
-{% block content %}
-<div class="space-y-6">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900">Departments</h1>
-            <p class="mt-1 text-sm text-gray-500">Manage hospital departments.</p>
-        </div>
-        <a href="{{ url_for('admin.create_department') }}" class="btn btn-primary">
+{% block page_title %}Departments{% endblock %}
+{% block page_description %}Manage hospital departments.{% endblock %}
+{% block page_actions %}
+<a href="{{ url_for('admin.create_department') }}" class="btn btn-primary">
             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
             </svg>
             New Department
         </a>
-    </div>
+{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
     <div class="overflow-x-auto">

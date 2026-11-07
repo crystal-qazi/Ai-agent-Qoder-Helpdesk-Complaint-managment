@@ -126,9 +126,11 @@ def register_context_processors(app):
     """Register template context processors."""
     @app.context_processor
     def inject_globals():
+        from datetime import datetime
         from app.services.notification import NotificationService
         return {
             'app_name': app.config['APP_NAME'],
             'app_version': app.config['APP_VERSION'],
             'notification_service': NotificationService,
+            'current_year': datetime.now().year,
         }

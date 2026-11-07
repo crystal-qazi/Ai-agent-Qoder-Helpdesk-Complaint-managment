@@ -19,10 +19,10 @@
             You need to be logged in to access this page. Please log in with your credentials.
         </p>
         <div class="flex items-center justify-center space-x-4">
-            <a href="{{ url_for('auth.login') }}" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700">
+            <a href="{{ url_for('auth.login') }}" class="btn btn-primary">
                 <i class="fas fa-sign-in-alt mr-2"></i>Login
             </a>
-            <a href="{{ url_for('dashboard.index') }}" class="inline-flex items-center px-6 py-3 border border-gray-300 text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+            <a href="{{ url_for('dashboard.index') }}" class="btn btn-secondary">
                 <i class="fas fa-home mr-2"></i>Home
             </a>
         </div>

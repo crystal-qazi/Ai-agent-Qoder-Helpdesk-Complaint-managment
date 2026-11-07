@@ -23,7 +23,7 @@
                 </i>
             </div>
             <div class="flex-1">
-                <h1 class="text-xl font-semibold text-gray-900">{{ notification.title }}</h1>
+                <h2 class="text-xl font-semibold text-gray-900">{{ notification.title }}</h2>
                 <p class="text-sm text-gray-500 mt-1">
                     {{ notification.created_at.strftime('%B %d, %Y at %I:%M %p') if notification.created_at else '' }}
                     {% if not notification.is_read %}<span class="ml-2 text-blue-500 font-medium">· Unread</span>{% endif %}

@@ -1,14 +1,12 @@
 {% extends "layouts/base.html" %}
 {% block title %}SLA Policies - Admin{% endblock %}
+{% block page_title %}SLA Policies{% endblock %}
+{% block page_description %}Manage SLA policies for response and resolution targets.{% endblock %}
+{% block page_actions %}
+<a href="{{ url_for('admin.create_sla_policy') }}" class="btn btn-primary">+ Add SLA Policy</a>
+{% endblock %}
 {% block content %}
 <div class="space-y-6">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900">SLA Policies</h1>
-            <p class="mt-1 text-sm text-gray-500">Manage SLA policies for response and resolution targets.</p>
-        </div>
-        <a href="{{ url_for('admin.create_sla_policy') }}" class="btn btn-primary">+ Add SLA Policy</a>
-    </div>
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
     {% if policies %}

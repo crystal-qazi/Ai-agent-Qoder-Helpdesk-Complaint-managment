@@ -1,16 +1,14 @@
 {% extends 'layouts/base.html' %}
 
 {% block title %}Roles{% endblock %}
+{% block page_title %}Roles &amp; Permissions{% endblock %}
+{% block page_description %}Define roles and the permissions they grant.{% endblock %}
+{% block page_actions %}
+<a href="{{ url_for('users.create_role') }}" class="btn btn-primary">+ New Role</a>
+{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
-    <div class="flex items-center justify-between">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900">Roles &amp; Permissions</h1>
-            <p class="mt-1 text-sm text-gray-500">Define roles and the permissions they grant.</p>
-        </div>
-        <a href="{{ url_for('users.create_role') }}" class="btn btn-primary">+ New Role</a>
-    </div>
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
     <div class="overflow-x-auto">
