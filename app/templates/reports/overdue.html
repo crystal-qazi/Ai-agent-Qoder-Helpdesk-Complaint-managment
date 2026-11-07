@@ -63,7 +63,7 @@
             <tbody class="bg-white divide-y divide-gray-200">
                 {% for complaint in overdue.response_overdue %}
                 <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-600">{{ complaint.complaint_number }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-600">{{ complaint.complaint_number }}</td>
                     <td class="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">{{ complaint.title }}</td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         {% if complaint.priority %}
@@ -80,7 +80,7 @@
                         {% if complaint.sla_response_deadline %}{{ ((now - complaint.sla_response_deadline).days) }} days{% endif %}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-right">
-                        <a href="{{ url_for('complaints.view_complaint', complaint_id=complaint.id) }}" class="text-indigo-600 hover:text-indigo-900 text-sm">View</a>
+                        <a href="{{ url_for('complaints.view_complaint', complaint_id=complaint.id) }}" class="text-primary-600 hover:text-primary-900 text-sm">View</a>
                     </td>
                 </tr>
                 {% endfor %}
@@ -117,7 +117,7 @@
             <tbody class="bg-white divide-y divide-gray-200">
                 {% for complaint in overdue.resolution_overdue %}
                 <tr class="hover:bg-gray-50">
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-600">{{ complaint.complaint_number }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-600">{{ complaint.complaint_number }}</td>
                     <td class="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">{{ complaint.title }}</td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         {% if complaint.status %}
@@ -134,7 +134,7 @@
                         {% if complaint.sla_resolution_deadline %}{{ ((now - complaint.sla_resolution_deadline).days) }} days{% endif %}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-right">
-                        <a href="{{ url_for('complaints.view_complaint', complaint_id=complaint.id) }}" class="text-indigo-600 hover:text-indigo-900 text-sm">View</a>
+                        <a href="{{ url_for('complaints.view_complaint', complaint_id=complaint.id) }}" class="text-primary-600 hover:text-primary-900 text-sm">View</a>
                     </td>
                 </tr>
                 {% endfor %}

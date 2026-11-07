@@ -17,11 +17,11 @@
     <form method="GET" action="{{ url_for('users.list_users') }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
-            <input type="text" name="search" value="{{ search or '' }}" placeholder="Name, email, username..." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+            <input type="text" name="search" value="{{ search or '' }}" placeholder="Name, email, username..." class="form-input">
         </div>
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select name="status" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+            <select name="status" class="form-select">
                 <option value="">All</option>
                 <option value="active" {% if status_filter == 'active' %}selected{% endif %}>Active</option>
                 <option value="inactive" {% if status_filter == 'inactive' %}selected{% endif %}>Inactive</option>
@@ -91,15 +91,18 @@
                         {% if user.id != current_user.id %}
                         {% if user.is_locked %}
                         <form method="POST" action="{{ url_for('users.unlock_user', user_id=user.id) }}" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="text-green-600 hover:text-green-900">Unlock</button>
                         </form>
                         {% endif %}
                         {% if user.is_active %}
                         <form method="POST" action="{{ url_for('users.delete_user', user_id=user.id) }}" class="inline" onsubmit="return confirm('Are you sure you want to deactivate this user?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="text-red-600 hover:text-red-900">Deactivate</button>
                         </form>
                         {% else %}
                         <form method="POST" action="{{ url_for('users.delete_user', user_id=user.id) }}" class="inline" onsubmit="return confirm('Are you sure you want to activate this user?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <button type="submit" class="text-green-600 hover:text-green-900">Activate</button>
                         </form>
                         {% endif %}

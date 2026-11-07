@@ -37,14 +37,14 @@
                     <div class="flex items-center">
                         <input type="checkbox" name="is_recurring" id="is_recurring" value="y"
                                {% if holiday.is_recurring %}checked{% endif %}
-                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                               class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500">
                         <label for="is_recurring" class="ml-2 block text-sm text-gray-700">Recurring (same date every year)</label>
                     </div>
 
                     <div class="flex items-center">
                         <input type="checkbox" name="is_active" id="is_active" value="y"
                                {% if holiday.is_active %}checked{% endif %}
-                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                               class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500">
                         <label for="is_active" class="ml-2 block text-sm text-gray-700">Active</label>
                     </div>
                 </div>

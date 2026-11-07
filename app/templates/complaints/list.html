@@ -3,6 +3,7 @@
 {% block title %}Complaints{% endblock %}
 
 {% block page_title %}All Complaints{% endblock %}
+{% block page_description %}View, filter and manage hospital complaints{% endblock %}
 
 {% block content %}
 <!-- Filters -->
@@ -10,11 +11,11 @@
     <form method="GET" action="{{ url_for('complaints.list_complaints') }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
-            <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="Complaint #, title, reporter..." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+            <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="Complaint #, title, reporter..." class="form-input">
         </div>
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select name="status_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+            <select name="status_id" class="form-select">
                 <option value="">All Statuses</option>
                 {% for status in statuses %}
                 <option value="{{ status.id }}" {% if request.args.get('status_id') == status.id|string %}selected{% endif %}>{{ status.name }}</option>
@@ -23,7 +24,7 @@
         </div>
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Priority</label>
-            <select name="priority_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+            <select name="priority_id" class="form-select">
                 <option value="">All Priorities</option>
                 {% for priority in priorities %}
                 <option value="{{ priority.id }}" {% if request.args.get('priority_id') == priority.id|string %}selected{% endif %}>{{ priority.name }}</option>
@@ -32,7 +33,7 @@
         </div>
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Category</label>
-            <select name="category_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+            <select name="category_id" class="form-select">
                 <option value="">All Categories</option>
                 {% for category in categories %}
                 <option value="{{ category.id }}" {% if request.args.get('category_id') == category.id|string %}selected{% endif %}>{{ category.name }}</option>
@@ -41,7 +42,7 @@
         </div>
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Department</label>
-            <select name="department_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+            <select name="department_id" class="form-select">
                 <option value="">All Departments</option>
                 {% for dept in departments %}
                 <option value="{{ dept.id }}" {% if request.args.get('department_id') == dept.id|string %}selected{% endif %}>{{ dept.name }}</option>
@@ -50,7 +51,7 @@
         </div>
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
-            <select name="assigned_to" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+            <select name="assigned_to" class="form-select">
                 <option value="">All Users</option>
                 <option value="unassigned" {% if request.args.get('assigned_to') == 'unassigned' %}selected{% endif %}>Unassigned</option>
                 {% for user in assignees %}
@@ -101,7 +102,7 @@
                     <td class="px-6 py-4 whitespace-nowrap">
                         <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full 
                             {% if complaint.status.code == 'new' %}bg-gray-100 text-gray-800
-                            {% elif complaint.status.code == 'assigned' %}bg-indigo-100 text-indigo-800
+                            {% elif complaint.status.code == 'assigned' %}bg-primary-100 text-primary-800
                             {% elif complaint.status.code == 'in_progress' %}bg-blue-100 text-blue-800
                             {% elif complaint.status.code == 'pending_info' %}bg-yellow-100 text-yellow-800
                             {% elif complaint.status.code == 'on_hold' %}bg-orange-100 text-orange-800

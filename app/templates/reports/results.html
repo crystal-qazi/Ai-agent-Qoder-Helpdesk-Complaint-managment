@@ -5,13 +5,13 @@
 {% block content %}
 <!-- Export Buttons -->
 <div class="flex items-center space-x-3 mb-6">
-    <a href="{{ url_for('reports.export_csv', **filters) }}" class="btn-secondary">
+    <a href="{{ url_for('reports.export_csv', **filters) }}" class="btn btn-secondary">
         <i class="fas fa-file-csv mr-2"></i>Export CSV
     </a>
-    <a href="{{ url_for('reports.export_pdf', **filters) }}" class="btn-secondary">
+    <a href="{{ url_for('reports.export_pdf', **filters) }}" class="btn btn-secondary">
         <i class="fas fa-file-pdf mr-2"></i>Export PDF
     </a>
-    <a href="{{ url_for('reports.index') }}" class="btn-secondary">
+    <a href="{{ url_for('reports.index') }}" class="btn btn-secondary">
         <i class="fas fa-arrow-left mr-2"></i>New Report
     </a>
 </div>
@@ -25,7 +25,7 @@
                 <p class="text-sm text-gray-500">{{ data|length }} records found</p>
             </div>
             {% if data %}
-            <button onclick="exportCSV()" class="btn-primary text-sm">
+            <button onclick="exportCSV()" class="btn btn-primary btn-sm">
                 <i class="fas fa-download mr-2"></i>Download
             </button>
             {% endif %}
@@ -52,7 +52,7 @@
             <tbody class="bg-white divide-y divide-gray-200">
                 {% for row in data %}
                 <tr class="hover:bg-gray-50">
-                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-indigo-600">{{ row.complaint_number }}</td>
+                    <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-primary-600">{{ row.complaint_number }}</td>
                     <td class="px-4 py-3 text-sm text-gray-900 max-w-xs truncate">{{ row.title }}</td>
                     <td class="px-4 py-3 whitespace-nowrap">
                         {% if row.status_color %}

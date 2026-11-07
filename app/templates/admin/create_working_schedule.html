@@ -74,14 +74,14 @@
                     <div class="flex items-center">
                         <input type="checkbox" name="is_active" id="is_active" value="y"
                                {% if not schedule or schedule.is_active %}checked{% endif %}
-                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                               class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500">
                         <label for="is_active" class="ml-2 block text-sm text-gray-700">Active</label>
                     </div>
 
                     <div class="flex items-center">
                         <input type="checkbox" name="is_default" id="is_default" value="y"
                                {% if schedule and schedule.is_default %}checked{% endif %}
-                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                               class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500">
                         <label for="is_default" class="ml-2 block text-sm text-gray-700">Default Schedule</label>
                     </div>
                 </div>

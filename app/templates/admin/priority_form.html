@@ -17,12 +17,12 @@
                 <div>
                     <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name <span class="text-red-500">*</span></label>
                     <input type="text" name="name" id="name" value="{{ priority.name if is_edit else '' }}" required maxlength="50"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        class="form-input">
                 </div>
                 <div>
                     <label for="code" class="block text-sm font-medium text-gray-700 mb-1">Code <span class="text-red-500">*</span></label>
                     <input type="text" name="code" id="code" value="{{ priority.code if is_edit else '' }}" required maxlength="10"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono"
+                        class="form-input font-mono"
                         style="text-transform: uppercase;">
                     <p class="mt-1 text-sm text-gray-500">e.g., HIGH, MED, LOW</p>
                 </div>
@@ -32,7 +32,7 @@
                 <div>
                     <label for="level" class="block text-sm font-medium text-gray-700 mb-1">Level <span class="text-red-500">*</span> (1-10)</label>
                     <input type="number" name="level" id="level" value="{{ priority.level if is_edit else 1 }}" required min="1" max="10"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        class="form-input">
                     <p class="mt-1 text-sm text-gray-500">Higher = more urgent</p>
                 </div>
                 <div>
@@ -52,17 +52,17 @@
                 <div>
                     <label for="sla_response_hours" class="block text-sm font-medium text-gray-700 mb-1">SLA Response (hours)</label>
                     <input type="number" name="sla_response_hours" id="sla_response_hours" value="{{ priority.sla_response_hours or '' if is_edit else '' }}" min="0" step="0.5"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        class="form-input">
                 </div>
                 <div>
                     <label for="sla_resolution_hours" class="block text-sm font-medium text-gray-700 mb-1">SLA Resolution (hours)</label>
                     <input type="number" name="sla_resolution_hours" id="sla_resolution_hours" value="{{ priority.sla_resolution_hours or '' if is_edit else '' }}" min="0" step="0.5"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        class="form-input">
                 </div>
                 <div>
                     <label for="escalation_hours" class="block text-sm font-medium text-gray-700 mb-1">Escalation (hours)</label>
                     <input type="number" name="escalation_hours" id="escalation_hours" value="{{ priority.escalation_hours or '' if is_edit else '' }}" min="0" step="0.5"
-                        class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        class="form-input">
                 </div>
             </div>
 

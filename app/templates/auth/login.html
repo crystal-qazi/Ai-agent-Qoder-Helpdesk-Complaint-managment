@@ -6,7 +6,7 @@
 <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
     <div class="max-w-md w-full space-y-8">
         <div>
-            <div class="mx-auto h-12 w-12 bg-indigo-600 rounded-xl flex items-center justify-center">
+            <div class="mx-auto h-12 w-12 bg-primary-600 rounded-xl flex items-center justify-center">
                 <svg class="h-8 w-8 text-white" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2 10.9 2 12 2ZM21 9H15V22H17V14H19V22H21V9ZM3 9H9V22H11V14H13V22H15V9Z"/>
                 </svg>
@@ -20,28 +20,28 @@
                 <div>
                     <label for="username" class="sr-only">Username</label>
                     <input type="text" name="username" id="username" autocomplete="username" required
-                           class="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                           class="form-input"
                            placeholder="Username">
                 </div>
                 <div>
                     <label for="password" class="sr-only">Password</label>
                     <input type="password" name="password" id="password" autocomplete="current-password" required
-                           class="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                           class="form-input"
                            placeholder="Password">
                 </div>
                 <div class="flex items-center justify-between">
                     <div class="flex items-center">
                         <input type="checkbox" name="remember_me" id="remember_me"
-                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                               class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500">
                         <label for="remember_me" class="ml-2 block text-sm text-gray-900">Remember me</label>
                     </div>
                     <div class="text-sm">
-                        <a href="{{ url_for('auth.forgot_password') }}" class="font-medium text-indigo-600 hover:text-indigo-500">Forgot password?</a>
+                        <a href="{{ url_for('auth.forgot_password') }}" class="font-medium text-primary-600 hover:text-primary-500">Forgot password?</a>
                     </div>
                 </div>
-                <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
                     <span class="absolute left-0 inset-y-0 flex items-center pl-3">
-                        <svg class="h-5 w-5 text-indigo-500 group-hover:text-indigo-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
+                        <svg class="h-5 w-5 text-primary-500 group-hover:text-primary-400" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd"/></svg>
                     </span>
                     Sign in
                 </button>

@@ -15,18 +15,22 @@
     {% if user.id != current_user.id %}
     {% if user.is_locked %}
     <form method="POST" action="{{ url_for('users.unlock_user', user_id=user.id) }}" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary">Unlock</button>
     </form>
     {% endif %}
     <form method="POST" action="{{ url_for('users.reset_user_password', user_id=user.id) }}" class="inline" onsubmit="return confirm('Reset password for this user?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary">Reset Password</button>
     </form>
     {% if user.is_active %}
     <form method="POST" action="{{ url_for('users.delete_user', user_id=user.id) }}" class="inline" onsubmit="return confirm('Deactivate this user?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-danger">Deactivate</button>
     </form>
     {% else %}
     <form method="POST" action="{{ url_for('users.delete_user', user_id=user.id) }}" class="inline" onsubmit="return confirm('Activate this user?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-secondary">Activate</button>
     </form>
     {% endif %}
@@ -142,7 +146,7 @@
                 <h3 class="text-lg font-semibold text-gray-900 mb-4">Effective Permissions</h3>
                 <div class="flex flex-wrap gap-1">
                     {% for perm in user_permissions %}
-                    <span class="px-2 py-0.5 text-xs bg-primary-100 text-primary-800 rounded">{{ perm }}</span>
+                    <span class="px-2 py-0.5 text-xs bg-primary-100 text-primary-800 rounded">{{ perm.full_name }}</span>
                     {% else %}
                     <span class="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">No permissions</span>
                     {% endfor %}
@@ -164,6 +168,7 @@
                     {% if user.id != current_user.id %}
                     {% if user.is_locked %}
                     <form method="POST" action="{{ url_for('users.unlock_user', user_id=user.id) }}" class="w-full">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="w-full btn btn-secondary text-left justify-start">
                             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
@@ -173,6 +178,7 @@
                     </form>
                     {% endif %}
                     <form method="POST" action="{{ url_for('users.reset_user_password', user_id=user.id) }}" class="w-full" onsubmit="return confirm('Reset password for this user?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="w-full btn btn-secondary text-left justify-start">
                             <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>

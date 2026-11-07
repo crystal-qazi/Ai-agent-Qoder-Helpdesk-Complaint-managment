@@ -23,13 +23,12 @@
             <div>
                 <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Title <span class="text-red-500">*</span></label>
                 <input type="text" name="title" id="title" value="{{ c.title if c else '' }}" required maxlength="255"
-                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                       class="form-input"
                        placeholder="Short summary of the issue">
             </div>
             <div>
                 <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description <span class="text-red-500">*</span></label>
-                <textarea name="description" id="description" rows="6" required minlength="10"
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                <textarea name="description" id="description" rows="6" required minlength="10" class="form-textarea"
                           placeholder="Describe what happened, when it started, and who is affected.">{{ c.description if c else '' }}</textarea>
             </div>
         </div>
@@ -40,7 +39,7 @@
                 <div>
                     <label for="category_id" class="block text-sm font-medium text-gray-700 mb-1">Category <span class="text-red-500">*</span></label>
                     <select name="category_id" id="category_id" required
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="form-select">
                         <option value="">Select category...</option>
                         {% for category in categories %}
                         <option value="{{ category.id }}" {% if c and c.category_id == category.id %}selected{% endif %}>{{ category.name }}</option>
@@ -50,7 +49,7 @@
                 <div>
                     <label for="priority_id" class="block text-sm font-medium text-gray-700 mb-1">Priority <span class="text-red-500">*</span></label>
                     <select name="priority_id" id="priority_id" required
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="form-select">
                         <option value="">Select priority...</option>
                         {% for priority in priorities %}
                         <option value="{{ priority.id }}" {% if c and c.priority_id == priority.id %}selected{% endif %}>{{ priority.name }}</option>
@@ -60,7 +59,7 @@
                 <div>
                     <label for="department_id" class="block text-sm font-medium text-gray-700 mb-1">Department <span class="text-red-500">*</span></label>
                     <select name="department_id" id="department_id" required
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="form-select">
                         <option value="">Select department...</option>
                         {% for dept in departments %}
                         <option value="{{ dept.id }}" {% if c and c.department_id == dept.id %}selected{% endif %}>{{ dept.name }}</option>
@@ -70,7 +69,7 @@
                 <div>
                     <label for="software_id" class="block text-sm font-medium text-gray-700 mb-1">Software / System <span class="text-red-500">*</span></label>
                     <select name="software_id" id="software_id" required
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="form-select">
                         <option value="">Select software...</option>
                         {% for sw in software %}
                         <option value="{{ sw.id }}" {% if c and c.software_id == sw.id %}selected{% endif %}>{{ sw.name }}</option>
@@ -80,7 +79,7 @@
                 <div>
                     <label for="severity" class="block text-sm font-medium text-gray-700 mb-1">Severity</label>
                     <select name="severity" id="severity"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="form-select">
                         <option value="">Select severity...</option>
                         {% for level in ['Critical', 'High', 'Medium', 'Low'] %}
                         <option value="{{ level }}" {% if c and c.severity == level %}selected{% endif %}>{{ level }}</option>
@@ -90,7 +89,7 @@
                 <div>
                     <label for="source_type" class="block text-sm font-medium text-gray-700 mb-1">Source</label>
                     <select name="source_type" id="source_type"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="form-select">
                         <option value="">Select source...</option>
                         {% for value, label in [('phone', 'Phone'), ('email', 'Email'), ('walk_in', 'Walk-in'), ('portal', 'Portal'), ('system', 'System alert'), ('other', 'Other')] %}
                         <option value="{{ value }}" {% if c and c.source_type == value %}selected{% endif %}>{{ label }}</option>
@@ -106,26 +105,26 @@
                 <div>
                     <label for="affected_location" class="block text-sm font-medium text-gray-700 mb-1">Location</label>
                     <input type="text" name="affected_location" id="affected_location" value="{{ c.affected_location if c and c.affected_location else '' }}" maxlength="200"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                           class="form-input"
                            placeholder="Building, floor, room">
                 </div>
                 <div>
                     <label for="affected_device" class="block text-sm font-medium text-gray-700 mb-1">Affected Device</label>
                     <input type="text" name="affected_device" id="affected_device" value="{{ c.affected_device if c and c.affected_device else '' }}" maxlength="200"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                           class="form-input"
                            placeholder="PC name / asset tag">
                 </div>
                 <div>
                     <label for="affected_users_count" class="block text-sm font-medium text-gray-700 mb-1">Affected Users</label>
                     <input type="number" name="affected_users_count" id="affected_users_count" min="1"
                            value="{{ c.affected_users_count if c else 1 }}"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                           class="form-input">
                 </div>
                 <div>
                     <label for="incident_started_at" class="block text-sm font-medium text-gray-700 mb-1">Incident Started</label>
                     <input type="datetime-local" name="incident_started_at" id="incident_started_at"
                            value="{{ c.incident_started_at.strftime('%Y-%m-%dT%H:%M') if c and c.incident_started_at else '' }}"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                           class="form-input">
                 </div>
             </div>
         </div>
@@ -137,7 +136,7 @@
                 <div>
                     <label for="reported_by_user_id" class="block text-sm font-medium text-gray-700 mb-1">Reported By <span class="text-red-500">*</span></label>
                     <select name="reported_by_user_id" id="reported_by_user_id" required
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="form-select">
                         {% for reporter in reporters %}
                         <option value="{{ reporter.id }}" {% if reporter.id == default_reporter.id %}selected{% endif %}>{{ reporter.full_name }} ({{ reporter.username }})</option>
                         {% endfor %}
@@ -146,7 +145,7 @@
                 <div>
                     <label for="assigned_to_user_id" class="block text-sm font-medium text-gray-700 mb-1">Assign To</label>
                     <select name="assigned_to_user_id" id="assigned_to_user_id"
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="form-select">
                         <option value="">Unassigned</option>
                         {% for assignee in assignees %}
                         <option value="{{ assignee.id }}">{{ assignee.full_name }}</option>
@@ -166,7 +165,7 @@
             </div>
             <div class="flex items-center">
                 <input type="checkbox" name="is_confidential" id="is_confidential" {% if c and c.is_confidential %}checked{% endif %}
-                       class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                       class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500">
                 <label for="is_confidential" class="ml-2 block text-sm text-gray-700">Mark as confidential</label>
             </div>
         </div>

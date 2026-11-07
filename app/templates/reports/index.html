@@ -5,15 +5,15 @@
 {% block content %}
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
     <!-- Complaint Summary -->
-    <a href="{{ url_for('reports.generate_report', report_type='complaint_summary') }}" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md hover:border-indigo-300 transition-all group">
+    <a href="{{ url_for('reports.generate_report', report_type='complaint_summary') }}" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md hover:border-primary-300 transition-all group">
         <div class="flex items-start space-x-4">
-            <div class="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
-                <svg class="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="w-12 h-12 bg-primary-100 rounded-xl flex items-center justify-center group-hover:bg-primary-200 transition-colors">
+                <svg class="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                 </svg>
             </div>
             <div>
-                <h3 class="text-lg font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">Complaint Summary</h3>
+                <h3 class="text-lg font-semibold text-gray-900 group-hover:text-primary-600 transition-colors">Complaint Summary</h3>
                 <p class="text-sm text-gray-500 mt-1">Full complaint details with filters</p>
             </div>
         </div>

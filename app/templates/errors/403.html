@@ -19,7 +19,7 @@
             You do not have permission to access this page. Please contact your administrator if you believe this is an error.
         </p>
         <div class="flex items-center justify-center space-x-4">
-            <a href="{{ url_for('dashboard.index') }}" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+            <a href="{{ url_for('dashboard.index') }}" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700">
                 <i class="fas fa-home mr-2"></i>Go to Dashboard
             </a>
             {% if current_user.is_authenticated %}

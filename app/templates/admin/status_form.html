@@ -14,12 +14,12 @@
                 <div>
                     <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name <span class="text-red-500">*</span></label>
                     <input type="text" name="name" id="name" value="{{ status.name if status else '' }}" required maxlength="50"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                           class="form-input">
                 </div>
                 <div>
                     <label for="code" class="block text-sm font-medium text-gray-700 mb-1">Code <span class="text-red-500">*</span></label>
                     <input type="text" name="code" id="code" value="{{ status.code if status else '' }}" required maxlength="20"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono"
+                           class="form-input font-mono"
                            placeholder="e.g. in_progress">
                 </div>
             </div>
@@ -28,7 +28,7 @@
                 <div>
                     <label for="category" class="block text-sm font-medium text-gray-700 mb-1">Category <span class="text-red-500">*</span></label>
                     <select name="category" id="category" required
-                            class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                            class="form-select">
                         {% for value in ['open', 'in_progress', 'pending', 'resolved', 'closed', 'special'] %}
                         <option value="{{ value }}" {% if status and status.category == value %}selected{% endif %}>{{ value|replace('_', ' ')|title }}</option>
                         {% endfor %}
@@ -37,7 +37,7 @@
                 <div>
                     <label for="sort_order" class="block text-sm font-medium text-gray-700 mb-1">Display Order</label>
                     <input type="number" name="sort_order" id="sort_order" min="0" value="{{ status.sort_order if status else 0 }}"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
+                           class="form-input">
                 </div>
                 <div>
                     <label for="color" class="block text-sm font-medium text-gray-700 mb-1">Color <span class="text-red-500">*</span></label>
@@ -45,44 +45,43 @@
                         <input type="color" name="color_picker" id="color_picker" value="{{ status.color if status else '#6B7280' }}"
                                class="h-10 w-12 rounded border border-gray-300 cursor-pointer">
                         <input type="text" name="color" id="color" value="{{ status.color if status else '#6B7280' }}" required maxlength="7"
-                               class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono"
+                               class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono"
                                placeholder="#RRGGBB">
                     </div>
                 </div>
                 <div>
                     <label for="icon" class="block text-sm font-medium text-gray-700 mb-1">Icon</label>
                     <input type="text" name="icon" id="icon" value="{{ status.icon if status and status.icon else '' }}" maxlength="50"
-                           class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                           class="form-input"
                            placeholder="e.g. check-circle">
                 </div>
             </div>
 
             <div>
                 <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea name="description" id="description" rows="2"
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent">{{ status.description if status and status.description else '' }}</textarea>
+                <textarea name="description" id="description" rows="2" class="form-textarea">{{ status.description if status and status.description else '' }}</textarea>
             </div>
 
             <div class="space-y-3 pt-2">
                 <h4 class="text-sm font-medium text-gray-700">Workflow Settings</h4>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label class="flex items-center">
-                        <input type="checkbox" name="is_initial" id="is_initial" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        <input type="checkbox" name="is_initial" id="is_initial" class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
                                {% if status and status.is_initial %}checked{% endif %}>
                         <span class="ml-2 text-sm text-gray-700">Initial status for new complaints</span>
                     </label>
                     <label class="flex items-center">
-                        <input type="checkbox" name="is_terminal" id="is_terminal" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        <input type="checkbox" name="is_terminal" id="is_terminal" class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
                                {% if status and status.is_terminal %}checked{% endif %}>
                         <span class="ml-2 text-sm text-gray-700">Terminal status (no further transitions)</span>
                     </label>
                     <label class="flex items-center">
-                        <input type="checkbox" name="requires_reason" id="requires_reason" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        <input type="checkbox" name="requires_reason" id="requires_reason" class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
                                {% if status and status.requires_reason %}checked{% endif %}>
                         <span class="ml-2 text-sm text-gray-700">Require a reason when selected</span>
                     </label>
                     <label class="flex items-center">
-                        <input type="checkbox" name="requires_resolution" id="requires_resolution" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        <input type="checkbox" name="requires_resolution" id="requires_resolution" class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
                                {% if status and status.requires_resolution %}checked{% endif %}>
                         <span class="ml-2 text-sm text-gray-700">Require resolution summary</span>
                     </label>
@@ -91,13 +90,12 @@
 
             <div>
                 <label for="allowed_transitions" class="block text-sm font-medium text-gray-700 mb-1">Allowed Transitions (JSON)</label>
-                <textarea name="allowed_transitions" id="allowed_transitions" rows="2"
-                          class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono text-sm"
+                <textarea name="allowed_transitions" id="allowed_transitions" rows="2" class="form-textarea font-mono text-sm"
                           placeholder="Leave blank to allow all transitions">{{ status.allowed_transitions|tojson if status and status.allowed_transitions is not none else '' }}</textarea>
             </div>
 
             <label class="flex items-center">
-                <input type="checkbox" name="is_active" id="is_active" class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                <input type="checkbox" name="is_active" id="is_active" class="h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
                        {% if not status or status.is_active %}checked{% endif %}>
                 <span class="ml-2 text-sm text-gray-700">Active</span>
             </label>

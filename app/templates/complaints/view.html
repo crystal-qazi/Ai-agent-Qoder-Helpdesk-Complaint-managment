@@ -51,7 +51,7 @@
                 <div class="flex flex-wrap items-center gap-2">
                     <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full
                         {% if complaint.status.code == 'new' %}bg-gray-100 text-gray-800
-                        {% elif complaint.status.code == 'assigned' %}bg-indigo-100 text-indigo-800
+                        {% elif complaint.status.code == 'assigned' %}bg-primary-100 text-primary-800
                         {% elif complaint.status.code == 'in_progress' %}bg-blue-100 text-blue-800
                         {% elif complaint.status.code == 'pending_info' %}bg-yellow-100 text-yellow-800
                         {% elif complaint.status.code == 'on_hold' %}bg-orange-100 text-orange-800
@@ -201,12 +201,13 @@
 
             <!-- Add Comment Form -->
             <form method="POST" action="{{ url_for('complaints.add_comment', complaint_id=complaint.id) }}" class="mb-6">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="flex items-start space-x-3">
                     <div class="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
                         <span class="text-sm font-medium text-primary-700">{{ current_user.first_name[0] if current_user.first_name else 'U' }}</span>
                     </div>
                     <div class="flex-1">
-                        <textarea name="content" rows="3" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Add a comment..." required></textarea>
+                        <textarea name="content" rows="3" class="form-textarea" placeholder="Add a comment..." required></textarea>
                         <div class="flex items-center space-x-4 mt-2">
                             <label class="flex items-center space-x-2 text-sm text-gray-700">
                                 <input type="checkbox" name="visibility" value="reporter_visible" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
@@ -372,10 +373,11 @@
                 </button>
             </div>
             <form method="POST" action="{{ url_for('complaints.assign_complaint', complaint_id=complaint.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="px-6 py-4 space-y-4">
                     <div>
                         <label for="new_assignee_id" class="block text-sm font-medium text-gray-700 mb-1">Assign To</label>
-                        <select name="new_assignee_id" id="new_assignee_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" required>
+                        <select name="new_assignee_id" id="new_assignee_id" class="form-select" required>
                             <option value="">Select user...</option>
                             {% for user in assignable_users %}
                             <option value="{{ user.id }}" {% if complaint.assigned_to_user_id == user.id %}selected{% endif %}>{{ user.full_name }}{% if user.department %} ({{ user.department.name }}){% endif %}</option>
@@ -384,7 +386,7 @@
                     </div>
                     <div>
                         <label for="assignment_reason" class="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
-                        <textarea name="assignment_reason" id="assignment_reason" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"></textarea>
+                        <textarea name="assignment_reason" id="assignment_reason" rows="3" class="form-textarea"></textarea>
                     </div>
                 </div>
                 <div class="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
@@ -412,10 +414,11 @@
                 </button>
             </div>
             <form method="POST" action="{{ url_for('complaints.change_status', complaint_id=complaint.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="px-6 py-4 space-y-4">
                     <div>
                         <label for="status_id" class="block text-sm font-medium text-gray-700 mb-1">New Status</label>
-                        <select name="status_id" id="status_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" required>
+                        <select name="status_id" id="status_id" class="form-select" required>
                             <option value="">Select status...</option>
                             {% for status in available_statuses %}
                             <option value="{{ status.id }}">{{ status.name }}</option>
@@ -424,11 +427,11 @@
                     </div>
                     <div>
                         <label for="reason" class="block text-sm font-medium text-gray-700 mb-1">Reason (required for resolution/closure)</label>
-                        <textarea name="reason" id="reason" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"></textarea>
+                        <textarea name="reason" id="reason" rows="3" class="form-textarea"></textarea>
                     </div>
                     <div>
                         <label for="resolution_summary" class="block text-sm font-medium text-gray-700 mb-1">Resolution Summary (if resolving)</label>
-                        <textarea name="resolution_summary" id="resolution_summary" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"></textarea>
+                        <textarea name="resolution_summary" id="resolution_summary" rows="3" class="form-textarea"></textarea>
                     </div>
                 </div>
                 <div class="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
