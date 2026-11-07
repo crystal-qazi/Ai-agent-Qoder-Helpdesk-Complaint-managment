@@ -43,7 +43,7 @@ class Config:
     MAIL_DEFAULT_SENDER = os.environ.get('MAIL_DEFAULT_SENDER', '')
     
     # Application
-    APP_NAME = os.environ.get('APP_NAME', 'Hospital IT Complaint System')
+    APP_NAME = os.environ.get('APP_NAME', 'IT Software Complain System')
     APP_VERSION = os.environ.get('APP_VERSION', '1.0.0')
     
     # Logging

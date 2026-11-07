@@ -6,12 +6,8 @@
 <div class="min-h-full flex items-center justify-center py-10 px-4 sm:px-6 lg:px-8">
     <div class="max-w-md w-full space-y-8">
         <div>
-            <div class="mx-auto h-12 w-12 bg-primary-600 rounded-xl flex items-center justify-center">
-                <svg class="h-8 w-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2 10.9 2 12 2ZM21 9H15V22H17V14H19V22H21V9ZM3 9H9V22H11V14H13V22H15V9Z"/>
-                </svg>
-            </div>
-            <h1 class="mt-6 text-center text-3xl font-bold text-gray-900">{{ config.APP_NAME or 'Hospital IT Complaint System' }}</h1>
+            <img src="{{ url_for('static', filename='images/logo.svg') }}" alt="{{ config.APP_NAME or 'IT Software Complain System' }} logo" class="mx-auto h-20 w-auto">
+            <h1 class="mt-6 text-center text-3xl font-bold text-gray-900">{{ config.APP_NAME or 'IT Software Complain System' }}</h1>
             <p class="mt-2 text-center text-sm text-gray-600">Sign in to your account</p>
         </div>
         <form class="mt-8 space-y-6" method="POST" action="">

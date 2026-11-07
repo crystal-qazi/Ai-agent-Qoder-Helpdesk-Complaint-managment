@@ -1,4 +1,4 @@
-# Hospital IT Complaint Tracking & Support Management System
+# IT Software Complain System
 
 A comprehensive Flask-based complaint tracking system for hospital IT support, featuring SLA management, role-based access control, reporting, and notification systems.
 

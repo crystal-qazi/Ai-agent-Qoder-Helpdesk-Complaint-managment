@@ -293,7 +293,7 @@ def seed_data():
 
 if __name__ == '__main__':
     print('=' * 50)
-    print('Hospital Complaint Tracking System - Database Setup')
+    print('IT Software Complain System - Database Setup')
     print('=' * 50)
     print(f'Database path: {DB_PATH}')
     create_tables()

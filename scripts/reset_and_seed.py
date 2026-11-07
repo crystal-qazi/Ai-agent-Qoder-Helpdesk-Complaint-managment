@@ -160,7 +160,7 @@ SOFTWARE = [
 ]
 
 SETTINGS = [
-    ('app_name', 'Hospital IT Complaint System', 'string', 'general', 'Application title', True),
+    ('app_name', 'IT Software Complain System', 'string', 'general', 'Application title', True),
     ('support_email', 'it-helpdesk@hospital.local', 'string', 'general', 'Helpdesk contact email', True),
     ('sla_warning_threshold_percent', '80', 'integer', 'sla', 'Warn when SLA elapsed exceeds this percentage', False),
     ('allow_self_registration', 'false', 'boolean', 'security', 'Allow users to self-register', False),

@@ -1,4 +1,4 @@
-// Hospital Complaint Tracking System - Main JavaScript
+// IT Software Complain System - Main JavaScript
 
 (function() {
     'use strict';

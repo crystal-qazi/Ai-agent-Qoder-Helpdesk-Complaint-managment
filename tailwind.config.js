@@ -1,4 +1,4 @@
-/** Tailwind configuration for the Hospital Complaint System UI. */
+/** Tailwind configuration for the IT Software Complain System UI. */
 module.exports = {
   content: [
     './app/templates/**/*.html',

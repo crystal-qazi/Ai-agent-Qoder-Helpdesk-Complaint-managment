@@ -47,4 +47,4 @@ def init_extensions(app):
         file_handler.setLevel(logging.INFO)
         app.logger.addHandler(file_handler)
         app.logger.setLevel(logging.INFO)
-        app.logger.info('Hospital Complaint System startup')
+        app.logger.info('IT Software Complain System startup')

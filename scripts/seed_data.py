@@ -1,5 +1,5 @@
 """
-Seed data script for Hospital Complaint Tracking System.
+Seed data script for IT Software Complain System.
 Uses raw SQL to avoid SQLAlchemy circular dependency issues.
 Usage: python scripts/seed_data.py
 """
@@ -55,7 +55,7 @@ def execute_sql(c, sql, params=None, dialect='sqlite'):
         c.execute(sql, params)
 
 print("=" * 50)
-print("Hospital Complaint Tracking System - Seed Data")
+print("IT Software Complain System - Seed Data")
 print("=" * 50)
 
 conn, dialect = get_connection()

@@ -1,5 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-  <rect x="3" y="4" width="18" height="17" rx="2"/>
-  <path d="M8 2v4M16 2v4M3 10h18"/>
-  <path d="M12 14.5l1.2 2.4 2.6.4-1.9 1.9.5 2.7-2.4-1.3-2.4 1.3.5-2.7-1.9-1.9 2.6-.4z" fill="#4f46e5" stroke="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100">
+  <defs>
+    <linearGradient id="crescent" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#D82B34"/>
+      <stop offset="0.55" stop-color="#C1202A"/>
+      <stop offset="1" stop-color="#9E161E"/>
+    </linearGradient>
+    <linearGradient id="bars" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2B3C90"/>
+      <stop offset="1" stop-color="#1A2464"/>
+    </linearGradient>
+    <mask id="crescent-cut">
+      <rect width="120" height="100" fill="#000"/>
+      <circle cx="47" cy="50" r="46" fill="#fff"/>
+      <circle cx="65" cy="50" r="43" fill="#000"/>
+    </mask>
+  </defs>
+  <rect width="120" height="100" fill="url(#crescent)" mask="url(#crescent-cut)"/>
+  <g fill="url(#bars)">
+    <rect x="61" y="25" width="51" height="12" rx="2"/>
+    <rect x="61" y="44" width="51" height="12" rx="2"/>
+    <rect x="61" y="63" width="51" height="12" rx="2"/>
+  </g>
 </svg>
