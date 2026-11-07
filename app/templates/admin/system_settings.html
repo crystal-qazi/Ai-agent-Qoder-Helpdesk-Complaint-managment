@@ -1,0 +1,79 @@
+{% extends "layouts/base.html" %}
+{% block title %}System Settings - Admin{% endblock %}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">System Settings</h1>
+            <p class="mt-1 text-sm text-gray-500">Manage system-wide configuration settings.</p>
+        </div>
+        <a href="{{ url_for('admin.create_system_setting') }}" class="btn btn-primary">+ Add Setting</a>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    {% if settings %}
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Key</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">System</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Updated</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for setting in settings %}
+                <tr class="hover:bg-gray-50 {% if not setting.is_editable %}bg-gray-50{% endif %}">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="font-mono text-sm font-medium text-gray-900">{{ setting.key }}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap max-w-xs">
+                        <span class="text-sm text-gray-900 truncate block">{{ setting.value or '<span class="text-gray-400">Empty</span>' }}</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                            {{ setting.value_type }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
+                        {{ setting.description or '-' }}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if not setting.is_editable %}bg-blue-100 text-blue-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {% if not setting.is_editable %}System{% else %}Custom{% endif %}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {% if setting.updated_at %}{{ setting.updated_at.strftime('%Y-%m-%d') }}{% else %}-{% endif %}
+                    </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <a href="{{ url_for('admin.edit_system_setting', setting_id=setting.id) }}" class="text-primary-600 hover:text-primary-900">Edit</a>
+                        {% if setting.is_editable %}
+                        <form method="POST" action="{{ url_for('admin.delete_system_setting', setting_id=setting.id) }}" class="inline" onsubmit="return confirm('Delete this setting?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="text-red-600 hover:text-red-900">Delete</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-12">
+        <i class="fas fa-cog text-4xl text-gray-300 mb-4"></i>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">No system settings found</h3>
+        <p class="text-gray-500 mb-6">Add system-wide configuration settings.</p>
+        <a href="{{ url_for('admin.create_system_setting') }}" class="btn btn-primary">
+            <i class="fas fa-plus mr-2"></i>Add Setting
+        </a>
+    </div>
+    {% endif %}
+</div>
+</div>
+{% endblock %}

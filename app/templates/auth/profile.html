@@ -1,0 +1,127 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}My Profile{% endblock %}
+
+{% block page_title %}My Profile{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div class="flex items-center space-x-6">
+            <div class="h-20 w-20 rounded-full bg-primary-100 flex items-center justify-center">
+                <span class="text-2xl font-bold text-primary-700">{{ current_user.first_name[0] if current_user.first_name else 'U' }}{{ current_user.last_name[0] if current_user.last_name else '' }}</span>
+            </div>
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900">{{ current_user.full_name }}</h2>
+                <p class="text-gray-500">{{ current_user.username }}</p>
+                <p class="text-gray-500">{{ current_user.email }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Personal Info -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Personal Information</h3>
+            <dl class="space-y-4">
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Employee Number</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ current_user.employee_number or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Phone</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ current_user.phone or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Extension</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ current_user.extension or '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Department</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ current_user.department.name if current_user.department else '—' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Status</dt>
+                    <dd class="mt-1 text-sm">
+                        {% if current_user.is_active %}
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Active</span>
+                        {% else %}
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800">Inactive</span>
+                        {% endif %}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Last Login</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ current_user.last_login_at.strftime('%Y-%m-%d %H:%M') if current_user.last_login_at else 'Never' }}</dd>
+                </div>
+                <div>
+                    <dt class="text-sm font-medium text-gray-500">Account Created</dt>
+                    <dd class="mt-1 text-sm text-gray-900">{{ current_user.created_at.strftime('%Y-%m-%d %H:%M') }}</dd>
+                </div>
+            </dl>
+        </div>
+
+        <!-- Roles & Permissions -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Roles & Permissions</h3>
+            <div class="space-y-4">
+                {% for role in current_user.roles %}
+                <div class="p-4 bg-gray-50 rounded-lg">
+                    <h4 class="font-medium text-gray-900">{{ role.display_name }}</h4>
+                    <p class="text-sm text-gray-500">{{ role.description or 'No description' }}</p>
+                    <div class="mt-2 flex flex-wrap gap-1">
+                        {% for perm in role.permissions %}
+                        <span class="px-2 py-0.5 text-xs bg-gray-200 text-gray-700 rounded">{{ perm.module }}.{{ perm.action }}</span>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-gray-500 text-center py-8">No roles assigned</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Preferences -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 lg:col-span-2">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Preferences</h3>
+            <form method="POST" action="{{ url_for('auth.profile') }}" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div>
+                    <label for="timezone" class="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
+                    <select name="timezone" id="timezone" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        <option value="UTC" {% if current_user.timezone == 'UTC' %}selected{% endif %}>UTC</option>
+                        <option value="Asia/Kolkata" {% if current_user.timezone == 'Asia/Kolkata' %}selected{% endif %}>Asia/Kolkata (IST)</option>
+                        <option value="America/New_York" {% if current_user.timezone == 'America/New_York' %}selected{% endif %}>America/New_York (EST)</option>
+                        <option value="Europe/London" {% if current_user.timezone == 'Europe/London' %}selected{% endif %}>Europe/London (GMT)</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="language" class="block text-sm font-medium text-gray-700 mb-1">Language</label>
+                    <select name="language" id="language" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        <option value="en" {% if current_user.language == 'en' %}selected{% endif %}>English</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="theme" class="block text-sm font-medium text-gray-700 mb-1">Theme</label>
+                    <select name="theme" id="theme" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        <option value="light" {% if current_user.theme == 'light' %}selected{% endif %}>Light</option>
+                        <option value="dark" {% if current_user.theme == 'dark' %}selected{% endif %}>Dark</option>
+                        <option value="system" {% if current_user.theme == 'system' %}selected{% endif %}>System</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="email_notifications" class="block text-sm font-medium text-gray-700 mb-1">Email Notifications</label>
+                    <select name="email_notifications" id="email_notifications" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        <option value="all" {% if current_user.email_notifications == 'all' %}selected{% endif %}>All</option>
+                        <option value="important" {% if current_user.email_notifications == 'important' %}selected{% endif %}>Important Only</option>
+                        <option value="none" {% if current_user.email_notifications == 'none' %}selected{% endif %}>None</option>
+                    </select>
+                </div>
+                <div class="sm:col-span-2 flex justify-end">
+                    <button type="submit" class="btn btn-primary">Save Preferences</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

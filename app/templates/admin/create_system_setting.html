@@ -1,0 +1,69 @@
+{% extends "layouts/base.html" %}
+{% block title %}{% if setting %}Edit Setting{% else %}Create Setting{% endif %} - Admin{% endblock %}
+{% block page_title %}{% if setting %}Edit Setting{% else %}Create Setting{% endif %}{% endblock %}
+{% block page_description %}{% if setting %}Update system setting{% else %}Add a new system setting{% endif %}{% endblock %}
+{% block breadcrumb_items %}
+<li><a href="{{ url_for('admin.index') }}" class="text-gray-500 hover:text-gray-700">Admin</a></li>
+<li class="text-gray-400">/</li>
+<li><a href="{{ url_for('admin.list_system_settings') }}" class="text-gray-500 hover:text-gray-700">System Settings</a></li>
+<li class="text-gray-400">/</li>
+<li class="text-gray-900 font-medium">{% if setting %}Edit{% else %}Create{% endif %}</li>
+{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <form method="POST" action="" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="grid grid-cols-1 gap-6">
+                <div>
+                    <label for="key" class="block text-sm font-medium text-gray-700 mb-1">Setting Key <span class="text-red-500">*</span></label>
+                    <input type="text" name="key" id="key" value="{{ setting.key if setting else '' }}" required maxlength="100"
+                           class="form-input font-mono" placeholder="e.g., max_attachment_size_mb">
+                    {% if setting and not setting.is_new %}
+                    <p class="mt-1 text-sm text-gray-500">Keys cannot be changed after creation.</p>
+                    {% endif %}
+                </div>
+
+                <div>
+                    <label for="value" class="block text-sm font-medium text-gray-700 mb-1">Value</label>
+                    {% if setting and setting.value_type == 'boolean' %}
+                    <select name="value" id="value" class="form-select">
+                        <option value="true" {% if setting.value == 'true' %}selected{% endif %}>true</option>
+                        <option value="false" {% if setting.value == 'false' %}selected{% endif %}>false</option>
+                    </select>
+                    {% else %}
+                    <textarea name="value" id="value" rows="3" class="form-textarea"
+                              placeholder="Enter the setting value...">{{ setting.value if setting else '' }}</textarea>
+                    {% endif %}
+                    <p class="mt-1 text-sm text-gray-500">{{ 'JSON format expected for this type.' if setting and setting.value_type == 'json' else 'Enter the value for this setting.' }}</p>
+                </div>
+
+                <div>
+                    <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea name="description" id="description" rows="2" class="form-textarea"
+                              placeholder="Describe what this setting controls...">{{ setting.description if setting else '' }}</textarea>
+                </div>
+
+                <div>
+                    <label for="setting_type" class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                    <select name="setting_type" id="setting_type" class="form-select">
+                        <option value="string" {% if not setting or setting.value_type == 'string' %}selected{% endif %}>String</option>
+                        <option value="number" {% if setting and setting.value_type == 'number' %}selected{% endif %}>Number</option>
+                        <option value="boolean" {% if setting and setting.value_type == 'boolean' %}selected{% endif %}>Boolean</option>
+                        <option value="json" {% if setting and setting.value_type == 'json' %}selected{% endif %}>JSON</option>
+                    </select>
+                </div>
+
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-gray-200 flex justify-end space-x-3">
+                <a href="{{ url_for('admin.list_system_settings') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save mr-2"></i>{% if setting %}Update{% else %}Create{% endif %} Setting
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,200 @@
+{% extends "layouts/base.html" %}
+{% block title %}Edit SLA Policy - Admin{% endblock %}
+{% block page_title %}Edit SLA Policy{% endblock %}
+{% block page_description %}Update SLA policy details{% endblock %}
+{% block breadcrumb_items %}
+<li><a href="{{ url_for('admin.index') }}" class="text-gray-500 hover:text-gray-700">Admin</a></li>
+<li class="text-gray-400">/</li>
+<li><a href="{{ url_for('admin.list_sla_policies') }}" class="text-gray-500 hover:text-gray-700">SLA Policies</a></li>
+<li class="text-gray-400">/</li>
+<li class="text-gray-900 font-medium">Edit {{ policy.name }}</li>
+{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <form method="POST" action="" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="grid grid-cols-1 gap-6">
+                <div class="col-span-1 sm:col-span-2">
+                    <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Policy Name <span class="text-red-500">*</span></label>
+                    <input type="text" name="name" id="name" value="{{ policy.name }}" required
+                           class="form-input" placeholder="e.g., Critical Response SLA">
+                </div>
+
+                <div>
+                    <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea name="description" id="description" rows="2" class="form-textarea">{{ policy.description or '' }}</textarea>
+                </div>
+
+                <div class="border-t border-gray-200 pt-4">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">Scope</h4>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                        <label for="department_id" class="block text-sm font-medium text-gray-700 mb-1">Department</label>
+                        <select name="department_id" id="department_id" class="form-select">
+                            <option value="">-- All Departments --</option>
+                            {% for dept in departments %}
+                            <option value="{{ dept.id }}" {% if policy.department_id == dept.id %}selected{% endif %}>{{ dept.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="priority_id" class="block text-sm font-medium text-gray-700 mb-1">Priority</label>
+                        <select name="priority_id" id="priority_id" class="form-select">
+                            <option value="">-- Any Priority --</option>
+                            {% for pri in priorities %}
+                            <option value="{{ pri.id }}" {% if policy.priority_id == pri.id %}selected{% endif %}>{{ pri.name }} ({{ pri.code }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="category_id" class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                        <select name="category_id" id="category_id" class="form-select">
+                            <option value="">-- Any Category --</option>
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}" {% if policy.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-200 pt-4">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">Time Targets</h4>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label for="response_target_minutes" class="block text-sm font-medium text-gray-700 mb-1">Response Target (minutes) <span class="text-red-500">*</span></label>
+                        <input type="number" name="response_target_minutes" id="response_target_minutes" value="{{ policy.response_target_minutes }}" required min="1"
+                               class="form-input">
+                    </div>
+
+                    <div>
+                        <label for="resolution_target_minutes" class="block text-sm font-medium text-gray-700 mb-1">Resolution Target (minutes) <span class="text-red-500">*</span></label>
+                        <input type="number" name="resolution_target_minutes" id="resolution_target_minutes" value="{{ policy.resolution_target_minutes }}" required min="1"
+                               class="form-input">
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-200 pt-4">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">Business Hours</h4>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="flex items-center">
+                        <input type="checkbox" name="use_business_hours" id="use_business_hours" value="y"
+                               {% if policy.use_business_hours %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="use_business_hours" class="ml-2 block text-sm text-gray-700">Use Business Hours Calculation</label>
+                    </div>
+
+                    <div>
+                        <label for="working_schedule_id" class="block text-sm font-medium text-gray-700 mb-1">Working Schedule</label>
+                        <select name="working_schedule_id" id="working_schedule_id" class="form-select">
+                            <option value="">-- Default Schedule --</option>
+                            {% for ws in working_schedules %}
+                            <option value="{{ ws.id }}" {% if policy.working_schedule_id == ws.id %}selected{% endif %}>{{ ws.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-200 pt-4">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">Escalation</h4>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="flex items-center">
+                        <input type="checkbox" name="escalation_enabled" id="escalation_enabled" value="y"
+                               {% if policy.escalation_enabled %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="escalation_enabled" class="ml-2 block text-sm text-gray-700">Enable Escalation</label>
+                    </div>
+
+                    <div>
+                        <label for="escalation_levels" class="block text-sm font-medium text-gray-700 mb-1">Escalation Levels (JSON)</label>
+                        <textarea name="escalation_levels" id="escalation_levels" rows="3" class="form-textarea font-mono text-xs">{{ escalation_levels }}</textarea>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-200 pt-4">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">Pause Settings</h4>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <div class="flex items-center">
+                        <input type="checkbox" name="pause_on_pending_info" id="pause_on_pending_info" value="y"
+                               {% if policy.pause_on_pending_info %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="pause_on_pending_info" class="ml-2 block text-sm text-gray-700">Pause on Pending Info</label>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" name="pause_on_hold" id="pause_on_hold" value="y"
+                               {% if policy.pause_on_hold %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="pause_on_hold" class="ml-2 block text-sm text-gray-700">Pause on Hold</label>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" name="pause_on_reassignment" id="pause_on_reassignment" value="y"
+                               {% if policy.pause_on_reassignment %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="pause_on_reassignment" class="ml-2 block text-sm text-gray-700">Pause on Reassignment</label>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" name="pause_on_reopen" id="pause_on_reopen" value="y"
+                               {% if policy.pause_on_reopen %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="pause_on_reopen" class="ml-2 block text-sm text-gray-700">Pause on Reopen</label>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="pause_on_status_ids" class="block text-sm font-medium text-gray-700 mb-1">Pause on Specific Statuses (JSON)</label>
+                    <textarea name="pause_on_status_ids" id="pause_on_status_ids" rows="2" class="form-textarea font-mono text-xs">{{ pause_on_status_ids }}</textarea>
+                </div>
+
+                <div class="border-t border-gray-200 pt-4">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">General Settings</h4>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div class="flex items-center">
+                        <input type="checkbox" name="is_active" id="is_active" value="y"
+                               {% if policy.is_active %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="is_active" class="ml-2 block text-sm text-gray-700">Active</label>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" name="is_default" id="is_default" value="y"
+                               {% if policy.is_default %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="is_default" class="ml-2 block text-sm text-gray-700">Default Policy</label>
+                    </div>
+
+                    <div>
+                        <label for="sort_order" class="block text-sm font-medium text-gray-700 mb-1">Sort Order</label>
+                        <input type="number" name="sort_order" id="sort_order" value="{{ policy.sort_order }}" min="0"
+                               class="form-input">
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-gray-200 flex justify-end space-x-3">
+                <a href="{{ url_for('admin.list_sla_policies') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save mr-2"></i>Update SLA Policy
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

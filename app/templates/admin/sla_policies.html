@@ -1,0 +1,104 @@
+{% extends "layouts/base.html" %}
+{% block title %}SLA Policies - Admin{% endblock %}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">SLA Policies</h1>
+            <p class="mt-1 text-sm text-gray-500">Manage SLA policies for response and resolution targets.</p>
+        </div>
+        <a href="{{ url_for('admin.create_sla_policy') }}" class="btn btn-primary">+ Add SLA Policy</a>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    {% if policies %}
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Response</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Resolution</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Biz Hours</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Schedule</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Escalation</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Default</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for policy in policies %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="font-medium text-gray-900">{{ policy.name }}</span>
+                        {% if policy.description %}
+                        <div class="text-xs text-gray-500 mt-1">{{ policy.description[:60] }}{% if policy.description|length > 60 %}...{% endif %}</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {% if policy.department %}{{ policy.department.name }}{% else %}<span class="text-gray-400">All</span>{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {% if policy.priority %}{{ policy.priority.name }}{% else %}<span class="text-gray-400">Any</span>{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {% if policy.category %}{{ policy.category.name }}{% else %}<span class="text-gray-400">Any</span>{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {% if policy.response_target_minutes %}{{ (policy.response_target_minutes / 60)|round(1) }}h{% else %}-{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {% if policy.resolution_target_minutes %}{{ (policy.resolution_target_minutes / 60)|round(1) }}h{% else %}-{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if policy.use_business_hours %}bg-blue-100 text-blue-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {% if policy.use_business_hours %}Yes{% else %}No{% endif %}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {% if policy.working_schedule %}{{ policy.working_schedule.name }}{% else %}<span class="text-gray-400">Default</span>{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if policy.escalation_enabled %}bg-yellow-100 text-yellow-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {% if policy.escalation_enabled %}Enabled{% else %}Disabled{% endif %}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if policy.is_default %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {% if policy.is_default %}Yes{% else %}No{% endif %}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if policy.is_active %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">
+                            {% if policy.is_active %}Active{% else %}Inactive{% endif %}
+                        </span>
+                    </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <a href="{{ url_for('admin.edit_sla_policy', policy_id=policy.id) }}" class="text-primary-600 hover:text-primary-900">Edit</a>
+                        <form method="POST" action="{{ url_for('admin.delete_sla_policy', policy_id=policy.id) }}" class="inline" onsubmit="return confirm('Deactivate this SLA policy? This action cannot be undone.');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="text-red-600 hover:text-red-900">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-12">
+        <i class="fas fa-clock text-4xl text-gray-300 mb-4"></i>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">No SLA policies found</h3>
+        <p class="text-gray-500 mb-6">Get started by creating your first SLA policy.</p>
+        <a href="{{ url_for('admin.create_sla_policy') }}" class="btn btn-primary">
+            <i class="fas fa-plus mr-2"></i>Create SLA Policy
+        </a>
+    </div>
+    {% endif %}
+</div>
+</div>
+{% endblock %}

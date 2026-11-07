@@ -1,0 +1,322 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+
+
+
+{% block content %}
+<!-- Stats Cards -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <!-- Total Complaints -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500">Total Complaints</p>
+                <p class="text-3xl font-bold text-gray-900 mt-1">{{ stats.total or 0 }}</p>
+            </div>
+            <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                </svg>
+            </div>
+        </div>
+        <div class="mt-4 flex items-center space-x-4 text-sm text-gray-500">
+            <span>{{ stats.new or 0 }} New</span>
+            <span>{{ stats.in_progress or 0 }} In Progress</span>
+            <span>{{ stats.resolved or 0 }} Resolved</span>
+        </div>
+    </div>
+
+    <!-- Assigned -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500">Assigned</p>
+                <p class="text-3xl font-bold text-gray-900 mt-1">{{ stats.assigned or 0 }}</p>
+            </div>
+            <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                </svg>
+            </div>
+        </div>
+        <div class="mt-4 text-sm text-gray-500">
+            <span>{{ stats.pending_info or 0 }} Pending Info</span>
+            <span class="mx-1">·</span>
+            <span>{{ stats.on_hold or 0 }} On Hold</span>
+        </div>
+    </div>
+
+    <!-- Overdue -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500">Overdue</p>
+                <p class="text-3xl font-bold text-orange-600 mt-1">{{ stats.overdue_total or 0 }}</p>
+            </div>
+            <div class="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                <svg class="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+        </div>
+        <div class="mt-4 text-sm text-gray-500">
+            <span class="text-red-600 font-medium">{{ stats.overdue_response or 0 }}</span> Response |
+            <span class="text-red-600 font-medium">{{ stats.overdue_resolution or 0 }}</span> Resolution
+        </div>
+    </div>
+
+    <!-- SLA Compliance -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <p class="text-sm font-medium text-gray-500">SLA Compliance</p>
+                <p class="text-3xl font-bold text-green-600 mt-1">{{ stats.sla_compliance or 0 }}%</p>
+            </div>
+            <div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+        </div>
+        <div class="mt-4 text-sm text-gray-500">
+            <span>{{ stats.closed or 0 }} Closed</span>
+            <span class="mx-1">·</span>
+            <span>{{ stats.reopened or 0 }} Reopened</span>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <!-- Status Distribution -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Complaints by Status</h3>
+        <div class="h-64">
+            <canvas id="statusChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Priority Distribution -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Complaints by Priority</h3>
+        <div class="h-64">
+            <canvas id="priorityChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Second Charts Row -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <!-- Department Distribution -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Complaints by Department</h3>
+        <div class="h-64">
+            <canvas id="departmentChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Trend -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Complaint Trend (Last 30 Days)</h3>
+        <div class="h-64">
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Complaints Table -->
+<div class="bg-white rounded-xl shadow-sm border border-gray-200">
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <h3 class="text-lg font-semibold text-gray-900">Recent Complaints</h3>
+        <a href="{{ url_for('complaints.list_complaints') }}" class="text-sm text-primary-600 hover:text-primary-800">View All</a>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Priority</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SLA</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% for complaint in recent_complaints %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ complaint.complaint_number }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">{{ complaint.title }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full 
+                            {% if complaint.status.code == 'new' %}bg-gray-100 text-gray-800
+                            {% elif complaint.status.code == 'assigned' %}bg-indigo-100 text-indigo-800
+                            {% elif complaint.status.code == 'in_progress' %}bg-blue-100 text-blue-800
+                            {% elif complaint.status.code == 'pending_info' %}bg-yellow-100 text-yellow-800
+                            {% elif complaint.status.code == 'on_hold' %}bg-orange-100 text-orange-800
+                            {% elif complaint.status.code == 'resolved' %}bg-green-100 text-green-800
+                            {% elif complaint.status.code == 'closed' %}bg-gray-100 text-gray-600
+                            {% elif complaint.status.code == 'reopened' %}bg-purple-100 text-purple-800
+                            {% elif complaint.status.code == 'rejected' %}bg-red-100 text-red-800
+                            {% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {{ complaint.status.name }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full 
+                            {% if complaint.priority.level <= 1 %}bg-red-100 text-red-800
+                            {% elif complaint.priority.level == 2 %}bg-orange-100 text-orange-800
+                            {% elif complaint.priority.level == 3 %}bg-yellow-100 text-yellow-800
+                            {% else %}bg-green-100 text-green-800{% endif %}">
+                            {{ complaint.priority.name }}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ complaint.category.name if complaint.category else '—' }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ complaint.assigned_to.full_name if complaint.assigned_to else 'Unassigned' }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ complaint.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if complaint.sla_resolution_deadline %}
+                            {% if complaint.sla_resolution_status == 'breached' %}
+                                <span class="text-xs font-medium text-red-600">BREACHED</span>
+                            {% elif complaint.sla_resolution_status == 'warning' %}
+                                <span class="text-xs font-medium text-orange-600">DUE SOON</span>
+                            {% else %}
+                                <span class="text-xs text-gray-500">{{ complaint.sla_resolution_deadline.strftime('%m/%d %H:%M') }}</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="text-xs text-gray-400">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <a href="{{ url_for('complaints.view_complaint', complaint_id=complaint.id) }}" class="text-primary-600 hover:text-primary-900">View</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="9" class="px-6 py-12 text-center text-gray-500">No complaints found</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const palette = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#6366f1'];
+
+    // Status Chart
+    const statusEl = document.getElementById('statusChart');
+    if (statusEl) {
+        const statusLabels = {{ status_data|map(attribute='status')|list|tojson }};
+        const statusCounts = {{ status_data|map(attribute='count')|list|tojson }};
+        const statusColors = {{ status_data|map(attribute='color')|list|tojson }}.map((c, i) => c || palette[i % palette.length]);
+        new Chart(statusEl.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: statusLabels,
+                datasets: [{ data: statusCounts, backgroundColor: statusColors, borderWidth: 0, hoverOffset: 4 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true, font: { size: 12 } } }
+                }
+            }
+        });
+    }
+
+    // Priority Chart
+    const priorityEl = document.getElementById('priorityChart');
+    if (priorityEl) {
+        const priorityLabels = {{ priority_data|map(attribute='priority')|list|tojson }};
+        const priorityCounts = {{ priority_data|map(attribute='count')|list|tojson }};
+        const priorityColors = {{ priority_data|map(attribute='color')|list|tojson }}.map((c, i) => c || palette[i % palette.length]);
+        new Chart(priorityEl.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: priorityLabels,
+                datasets: [{ label: 'Count', data: priorityCounts, backgroundColor: priorityColors, borderWidth: 0, borderRadius: 4 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } }
+            }
+        });
+    }
+
+    // Department Chart
+    const departmentEl = document.getElementById('departmentChart');
+    if (departmentEl) {
+        const deptLabels = {{ department_data|map(attribute='department')|list|tojson }};
+        const deptCounts = {{ department_data|map(attribute='count')|list|tojson }};
+        new Chart(departmentEl.getContext('2d'), {
+            type: 'pie',
+            data: {
+                labels: deptLabels,
+                datasets: [{ data: deptCounts, backgroundColor: palette, borderWidth: 0 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 15, usePointStyle: true, font: { size: 11 } } }
+                }
+            }
+        });
+    }
+
+    // Trend Chart
+    const trendEl = document.getElementById('trendChart');
+    if (trendEl) {
+        const trendLabels = {{ daily_trends|map(attribute='date')|list|tojson }};
+        const trendCounts = {{ daily_trends|map(attribute='count')|list|tojson }};
+        new Chart(trendEl.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: trendLabels,
+                datasets: [{
+                    label: 'Created',
+                    data: trendCounts,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 15, usePointStyle: true, font: { size: 12 } } }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1 } },
+                    x: {
+                        ticks: {
+                            maxTicksLimit: 10,
+                            callback: function(value) {
+                                const label = this.getLabelForValue(value);
+                                return label ? label.slice(5) : label;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

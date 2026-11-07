@@ -1,0 +1,473 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}{{ complaint.complaint_number }} - {{ complaint.title }}{% endblock %}
+
+{% block page_title %}{{ complaint.complaint_number }}: {{ complaint.title }}{% endblock %}
+
+{% block page_actions %}
+<div class="flex items-center space-x-2">
+    {% if current_user.is_authenticated and current_user.has_permission('complaints.update') and complaint.status.code not in ['closed'] %}
+    <a href="{{ url_for('complaints.edit_complaint', complaint_id=complaint.id) }}" class="btn btn-secondary">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+        </svg>
+        Edit
+    </a>
+    {% endif %}
+    {% if current_user.is_authenticated and current_user.has_permission('complaints.assign') and complaint.status.code not in ['closed'] %}
+    <button type="button" class="btn btn-secondary" data-modal-target="assign-modal">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+        </svg>
+        Assign
+    </button>
+    {% endif %}
+    {% if current_user.is_authenticated and current_user.has_permission('complaints.change_status') and complaint.status.code not in ['closed'] %}
+    <button type="button" class="btn btn-secondary" data-modal-target="status-modal">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        Change Status
+    </button>
+    {% endif %}
+    <a href="{{ url_for('complaints.list_complaints') }}" class="btn btn-secondary">Back</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Main Content -->
+    <div class="lg:col-span-2 space-y-6">
+        <!-- Complaint Header -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+                <div>
+                    <div class="flex items-center space-x-3 mb-2">
+                        <span class="text-sm font-medium text-gray-500">Complaint #</span>
+                        <span class="text-xl font-bold text-gray-900">{{ complaint.complaint_number }}</span>
+                    </div>
+                    <h1 class="text-2xl font-bold text-gray-900">{{ complaint.title }}</h1>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full
+                        {% if complaint.status.code == 'new' %}bg-gray-100 text-gray-800
+                        {% elif complaint.status.code == 'assigned' %}bg-indigo-100 text-indigo-800
+                        {% elif complaint.status.code == 'in_progress' %}bg-blue-100 text-blue-800
+                        {% elif complaint.status.code == 'pending_info' %}bg-yellow-100 text-yellow-800
+                        {% elif complaint.status.code == 'on_hold' %}bg-orange-100 text-orange-800
+                        {% elif complaint.status.code == 'resolved' %}bg-green-100 text-green-800
+                        {% elif complaint.status.code == 'closed' %}bg-gray-100 text-gray-600
+                        {% elif complaint.status.code == 'reopened' %}bg-purple-100 text-purple-800
+                        {% elif complaint.status.code == 'rejected' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ complaint.status.name }}
+                    </span>
+                    <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full 
+                        {% if complaint.priority.level <= 1 %}bg-red-100 text-red-800
+                        {% elif complaint.priority.level == 2 %}bg-orange-100 text-orange-800
+                        {% elif complaint.priority.level == 3 %}bg-yellow-100 text-yellow-800
+                        {% else %}bg-green-100 text-green-800{% endif %}">
+                        {{ complaint.priority.name }}
+                    </span>
+                </div>
+            </div>
+
+            <div class="prose max-w-none text-gray-700">
+                <p>{{ complaint.description }}</p>
+            </div>
+        </div>
+
+        <!-- Details Grid -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Details</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Category</label>
+                    <p class="text-sm text-gray-900 mt-1">{{ complaint.category.name if complaint.category else '—' }}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Department</label>
+                    <p class="text-sm text-gray-900 mt-1">{{ complaint.department.name if complaint.department else '—' }}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Software</label>
+                    <p class="text-sm text-gray-900 mt-1">{{ complaint.software.name if complaint.software else '—' }}{% if complaint.software and complaint.software.version %} ({{ complaint.software.version }}){% endif %}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Severity</label>
+                    <p class="text-sm text-gray-900 mt-1">{{ complaint.severity or '—' }}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Reporter</label>
+                    <p class="text-sm text-gray-900 mt-1">{{ complaint.reported_by.full_name if complaint.reported_by else '—' }}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Assigned To</label>
+                    <p class="text-sm text-gray-900 mt-1">{{ complaint.assigned_to.full_name if complaint.assigned_to else 'Unassigned' }}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Created</label>
+                    <p class="text-sm text-gray-900 mt-1">{{ complaint.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Updated</label>
+                    <p class="text-sm text-gray-900 mt-1">{{ complaint.updated_at.strftime('%Y-%m-%d %H:%M') if complaint.updated_at else '—' }}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">First Response</label>
+                    <p class="text-sm text-gray-900 mt-1">{{ complaint.first_response_at.strftime('%Y-%m-%d %H:%M') if complaint.first_response_at else 'Not yet responded' }}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Resolved</label>
+                    <p class="text-sm text-gray-900 mt-1">{{ complaint.resolved_at.strftime('%Y-%m-%d %H:%M') if complaint.resolved_at else '—' }}</p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">SLA Response Deadline</label>
+                    <p class="text-sm text-gray-900 mt-1">
+                        {% if complaint.sla_response_deadline %}
+                            {% if complaint.sla_response_status == 'breached' %}
+                                <span class="text-red-600 font-medium">{{ complaint.sla_response_deadline.strftime('%Y-%m-%d %H:%M') }} (BREACHED)</span>
+                            {% else %}
+                                {{ complaint.sla_response_deadline.strftime('%Y-%m-%d %H:%M') }}
+                            {% endif %}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </p>
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">SLA Resolution Deadline</label>
+                    <p class="text-sm text-gray-900 mt-1">
+                        {% if complaint.sla_resolution_deadline %}
+                            {% if complaint.sla_resolution_status == 'breached' %}
+                                <span class="text-red-600 font-medium">{{ complaint.sla_resolution_deadline.strftime('%Y-%m-%d %H:%M') }} (BREACHED)</span>
+                            {% else %}
+                                {{ complaint.sla_resolution_deadline.strftime('%Y-%m-%d %H:%M') }}
+                            {% endif %}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="sm:col-span-2">
+                    <label class="text-sm font-medium text-gray-500">Resolution Notes</label>
+                    <p class="text-sm text-gray-900 mt-1">{{ complaint.resolution_summary or '—' }}</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Attachments -->
+        {% if complaint.attachments.count() %}
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Attachments</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {% for attachment in complaint.attachments %}
+                <div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50">
+                    <div class="flex items-start space-x-3">
+                        <div class="flex-shrink-0">
+                            {% if attachment.mime_type and attachment.mime_type.startswith('image') %}
+                            <svg class="w-10 h-10 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            {% elif attachment.file_extension in ['pdf','doc','docx','txt','xls','xlsx'] %}
+                            <svg class="w-10 h-10 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            {% else %}
+                            <svg class="w-10 h-10 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122"/>
+                            </svg>
+                            {% endif %}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-medium text-gray-900 truncate">{{ attachment.original_filename }}</p>
+                            <p class="text-xs text-gray-500">{{ (attachment.file_size / 1024)|round(1) }} KB • {{ attachment.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                            <p class="text-xs text-gray-400">Uploaded by {{ attachment.user.full_name if attachment.user else 'Unknown' }}</p>
+                        </div>
+                        <a href="{{ url_for('complaints.download_attachment', complaint_id=complaint.id, attachment_id=attachment.id) }}" class="text-primary-600 hover:text-primary-800 text-sm font-medium">Download</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Comments -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-semibold text-gray-900">Comments</h3>
+                <span class="text-sm text-gray-500">{{ internal_comments|length + reporter_comments|length }} comments</span>
+            </div>
+
+            <!-- Add Comment Form -->
+            <form method="POST" action="{{ url_for('complaints.add_comment', complaint_id=complaint.id) }}" class="mb-6">
+                <div class="flex items-start space-x-3">
+                    <div class="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
+                        <span class="text-sm font-medium text-primary-700">{{ current_user.first_name[0] if current_user.first_name else 'U' }}</span>
+                    </div>
+                    <div class="flex-1">
+                        <textarea name="content" rows="3" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" placeholder="Add a comment..." required></textarea>
+                        <div class="flex items-center space-x-4 mt-2">
+                            <label class="flex items-center space-x-2 text-sm text-gray-700">
+                                <input type="checkbox" name="visibility" value="reporter_visible" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500">
+                                <span>Visible to reporter</span>
+                            </label>
+                            <button type="submit" class="btn btn-primary btn-sm">Post Comment</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+            <!-- Comments List -->
+            <div class="space-y-4">
+                {% for comment in reporter_comments + internal_comments %}
+                <div class="border-t border-gray-200 pt-4 {% if loop.first %}border-0 pt-0{% endif %}">
+                    <div class="flex items-start space-x-3">
+                        <div class="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
+                            <span class="text-sm font-medium text-primary-700">{{ comment.user.first_name[0] if comment.user and comment.user.first_name else 'U' }}</span>
+                        </div>
+                        <div class="flex-1">
+                            <div class="flex items-center space-x-2 mb-1">
+                                <span class="font-medium text-gray-900">{{ comment.user.full_name if comment.user else 'Unknown' }}</span>
+                                <span class="text-sm text-gray-500">{{ comment.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+                                {% if comment.visibility == 'reporter_visible' %}
+                                <span class="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 text-green-800">Reporter Visible</span>
+                                {% else %}
+                                <span class="inline-flex px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-800">Internal</span>
+                                {% endif %}
+                            </div>
+                            <div class="prose prose-sm max-w-none text-gray-700">
+                                {{ comment.content }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-gray-500 text-center py-8">No comments yet</p>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- History -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Activity History</h3>
+            <div class="space-y-4">
+                {% for history in complaint.history %}
+                <div class="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                    <div class="h-8 w-8 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm text-gray-900">{{ history.description or history.action }}</p>
+                        <p class="text-xs text-gray-500">{{ history.created_at.strftime('%Y-%m-%d %H:%M') }} by {{ history.user.full_name if history.user else 'System' }}</p>
+                    </div>
+                </div>
+                {% else %}
+                <p class="text-gray-500 text-center py-8">No history recorded</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="space-y-6">
+        <!-- SLA Info -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">SLA Status</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Response SLA</label>
+                    {% if complaint.sla_response_deadline %}
+                        {% if complaint.first_response_at %}
+                            {% if complaint.first_response_at <= complaint.sla_response_deadline %}
+                            <p class="text-sm font-medium text-green-600 mt-1">Met ✓</p>
+                            {% else %}
+                            <p class="text-sm font-medium text-red-600 mt-1">Breached ✗</p>
+                            {% endif %}
+                        {% elif complaint.sla_response_status == 'breached' %}
+                        <p class="text-sm font-medium text-red-600 mt-1">Breached ✗</p>
+                        {% else %}
+                        <p class="text-sm font-medium text-orange-600 mt-1">Pending ({{ complaint.sla_response_deadline.strftime('%Y-%m-%d %H:%M') }})</p>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-sm text-gray-500 mt-1">No SLA policy applied</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <label class="text-sm font-medium text-gray-500">Resolution SLA</label>
+                    {% if complaint.sla_resolution_deadline %}
+                        {% if complaint.resolved_at %}
+                            {% if complaint.resolved_at <= complaint.sla_resolution_deadline %}
+                            <p class="text-sm font-medium text-green-600 mt-1">Met ✓</p>
+                            {% else %}
+                            <p class="text-sm font-medium text-red-600 mt-1">Breached ✗</p>
+                            {% endif %}
+                        {% elif complaint.sla_resolution_status == 'breached' %}
+                        <p class="text-sm font-medium text-red-600 mt-1">Breached ✗</p>
+                        {% else %}
+                        <p class="text-sm font-medium text-orange-600 mt-1">Pending ({{ complaint.sla_resolution_deadline.strftime('%Y-%m-%d %H:%M') }})</p>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-sm text-gray-500 mt-1">No SLA policy applied</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+            <div class="space-y-2">
+                {% if current_user.is_authenticated and current_user.has_permission('complaints.assign') and complaint.status.code not in ['closed'] %}
+                <button type="button" class="w-full btn btn-secondary text-left justify-start" data-modal-target="assign-modal">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                    Assign / Reassign
+                </button>
+                {% endif %}
+                {% if current_user.is_authenticated and current_user.has_permission('complaints.change_status') and complaint.status.code not in ['closed'] %}
+                <button type="button" class="w-full btn btn-secondary text-left justify-start" data-modal-target="status-modal">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    Change Status
+                </button>
+                {% endif %}
+                {% if current_user.is_authenticated and current_user.has_permission('complaints.update') and complaint.status.code not in ['closed'] %}
+                <a href="{{ url_for('complaints.edit_complaint', complaint_id=complaint.id) }}" class="w-full btn btn-secondary text-left justify-start">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                    </svg>
+                    Edit Complaint
+                </a>
+                {% endif %}
+                {% if current_user.is_authenticated and current_user.has_permission('complaints.create') %}
+                <a href="{{ url_for('complaints.create_complaint') }}" class="w-full btn btn-secondary text-left justify-start">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    Create Similar
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Assign Modal -->
+{% if current_user.is_authenticated and current_user.has_permission('complaints.assign') and complaint.status.code not in ['closed'] %}
+<div id="assign-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="assign-modal-title">
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="closeModal('assign-modal')"></div>
+        <div class="relative bg-white rounded-xl shadow-xl max-w-md w-full">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 id="assign-modal-title" class="text-lg font-semibold text-gray-900">Assign Complaint</h3>
+                <button type="button" class="text-gray-400 hover:text-gray-600" @click="closeModal('assign-modal')">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <form method="POST" action="{{ url_for('complaints.assign_complaint', complaint_id=complaint.id) }}">
+                <div class="px-6 py-4 space-y-4">
+                    <div>
+                        <label for="new_assignee_id" class="block text-sm font-medium text-gray-700 mb-1">Assign To</label>
+                        <select name="new_assignee_id" id="new_assignee_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" required>
+                            <option value="">Select user...</option>
+                            {% for user in assignable_users %}
+                            <option value="{{ user.id }}" {% if complaint.assigned_to_user_id == user.id %}selected{% endif %}>{{ user.full_name }}{% if user.department %} ({{ user.department.name }}){% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="assignment_reason" class="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
+                        <textarea name="assignment_reason" id="assignment_reason" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"></textarea>
+                    </div>
+                </div>
+                <div class="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
+                    <button type="button" class="btn btn-secondary" @click="closeModal('assign-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Assign</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Status Change Modal -->
+{% if current_user.is_authenticated and current_user.has_permission('complaints.change_status') and complaint.status.code not in ['closed'] %}
+<div id="status-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="status-modal-title">
+    <div class="flex min-h-full items-center justify-center p-4">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="closeModal('status-modal')"></div>
+        <div class="relative bg-white rounded-xl shadow-xl max-w-md w-full">
+            <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+                <h3 id="status-modal-title" class="text-lg font-semibold text-gray-900">Change Status</h3>
+                <button type="button" class="text-gray-400 hover:text-gray-600" @click="closeModal('status-modal')">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <form method="POST" action="{{ url_for('complaints.change_status', complaint_id=complaint.id) }}">
+                <div class="px-6 py-4 space-y-4">
+                    <div>
+                        <label for="status_id" class="block text-sm font-medium text-gray-700 mb-1">New Status</label>
+                        <select name="status_id" id="status_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" required>
+                            <option value="">Select status...</option>
+                            {% for status in available_statuses %}
+                            <option value="{{ status.id }}">{{ status.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label for="reason" class="block text-sm font-medium text-gray-700 mb-1">Reason (required for resolution/closure)</label>
+                        <textarea name="reason" id="reason" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"></textarea>
+                    </div>
+                    <div>
+                        <label for="resolution_summary" class="block text-sm font-medium text-gray-700 mb-1">Resolution Summary (if resolving)</label>
+                        <textarea name="resolution_summary" id="resolution_summary" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"></textarea>
+                    </div>
+                </div>
+                <div class="px-6 py-4 border-t border-gray-200 flex justify-end space-x-3">
+                    <button type="button" class="btn btn-secondary" @click="closeModal('status-modal')">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Status</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+function openModal(modalId) {
+    document.getElementById(modalId).classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal(modalId) {
+    document.getElementById(modalId).classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[data-modal-target]').forEach(btn => {
+        btn.addEventListener('click', function() {
+            openModal(this.dataset.modalTarget);
+        });
+    });
+
+    // Close on escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('[id$="-modal"]').forEach(modal => {
+                modal.classList.add('hidden');
+            });
+            document.body.style.overflow = '';
+        }
+    });
+});
+</script>
+{% endblock %}

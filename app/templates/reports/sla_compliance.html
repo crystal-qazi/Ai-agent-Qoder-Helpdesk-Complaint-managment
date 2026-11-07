@@ -1,0 +1,108 @@
+{% extends "layouts/base.html" %}
+{% block title %}SLA Compliance - Reports{% endblock %}
+{% block page_title %}SLA Compliance Trends{% endblock %}
+{% block page_description %}SLA compliance rates over time{% endblock %}
+{% block head %}
+<style>
+    .chart-container { position: relative; height: 300px; }
+</style>
+{% endblock %}
+{% block content %}
+{% set ns = namespace(total=0, met=0, breached=0) %}
+{% for day in trends %}
+{% set ns.total = ns.total + (day.total or 0) %}
+{% set ns.met = ns.met + (day.met or 0) %}
+{% set ns.breached = ns.breached + (day.breached or 0) %}
+{% endfor %}
+{% set compliance_rate = (ns.met / ns.total * 100) if ns.total else 0 %}
+<!-- Stats Cards -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <p class="text-sm text-gray-500">Overall Compliance</p>
+        <p class="text-3xl font-bold text-green-600">{{ "%.1f"|format(compliance_rate) }}%</p>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <p class="text-sm text-gray-500">Total with SLA</p>
+        <p class="text-3xl font-bold text-gray-900">{{ ns.total }}</p>
+    </div>
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+        <p class="text-sm text-gray-500">SLA Breached</p>
+        <p class="text-3xl font-bold text-red-600">{{ ns.breached }}</p>
+    </div>
+</div>
+
+<!-- Chart -->
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+    <h3 class="text-lg font-semibold text-gray-900 mb-4">Daily Compliance Trend</h3>
+    <div class="chart-container">
+        <canvas id="complianceChart"></canvas>
+    </div>
+</div>
+
+<!-- Data Table -->
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-200">
+        <h3 class="text-lg font-semibold text-gray-900">Daily Breakdown</h3>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Total</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Compliant</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Breached</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Compliance %</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for day in trends %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ day.date }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ day.total }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-green-600">{{ day.met }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-red-600">{{ day.breached }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="w-16 bg-gray-200 rounded-full h-2 mr-2">
+                                <div class="bg-{% if day.compliance >= 90 %}green{% elif day.compliance >= 70 %}yellow{% else %}red{% endif %}-500 h-2 rounded-full" style="width: {{ day.compliance }}%"></div>
+                            </div>
+                            <span class="text-sm font-medium text-gray-900">{{ "%.1f"|format(day.compliance) }}%</span>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const ctx = document.getElementById('complianceChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: {{ trends|map(attribute='date')|list|tojson }},
+            datasets: [{
+                label: 'Compliance %',
+                data: {{ trends|map(attribute='compliance')|list|tojson }},
+                borderColor: '#4f46e5',
+                backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } }
+            }
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Permissions{% endblock %}
+
+{% block page_title %}All Permissions{% endblock %}
+
+{% block content %}
+<div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Module</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% set current_module = '' %}
+                {% for perm in permissions %}
+                {% if perm.module != current_module %}
+                {% set current_module = perm.module %}
+                <tr class="bg-gray-50">
+                    <td class="px-6 py-3 text-left text-sm font-semibold text-gray-900 uppercase">{{ perm.module }}</td>
+                    <td colspan="2"></td>
+                </tr>
+                {% endif %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-3 text-left text-sm text-gray-500">{{ perm.module }}</td>
+                    <td class="px-6 py-3 text-left text-sm font-medium text-gray-900">{{ perm.action }}</td>
+                    <td class="px-6 py-3 text-left text-sm text-gray-500">{{ perm.description or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

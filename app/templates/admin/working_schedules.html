@@ -1,0 +1,96 @@
+{% extends "layouts/base.html" %}
+{% block title %}Working Schedules - Admin{% endblock %}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Working Schedules</h1>
+            <p class="mt-1 text-sm text-gray-500">Manage business hours and working schedules.</p>
+        </div>
+        <a href="{{ url_for('admin.create_working_schedule') }}" class="btn btn-primary">+ Add Schedule</a>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    {% if schedules %}
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timezone</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Mon</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tue</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Wed</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Thu</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fri</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sat</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sun</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Exceptions</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Default</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for schedule in schedules %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="font-medium text-gray-900">{{ schedule.name }}</span>
+                        {% if schedule.description %}
+                        <div class="text-xs text-gray-500 mt-1">{{ schedule.description[:50] }}{% if schedule.description|length > 50 %}...{% endif %}</div>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">{{ schedule.timezone or 'UTC' }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {% if schedule.department %}{{ schedule.department.name }}{% else %}<span class="text-gray-400">All</span>{% endif %}
+                    </td>
+                    {% set days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] %}
+                    {% for day in days %}
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">
+                        {% if schedule.weekly_schedule and schedule.weekly_schedule[day] %}
+                            {% set hours = schedule.weekly_schedule[day] %}
+                            {% if hours.start and hours.end %}{{ hours.start }}-{{ hours.end }}{% else %}<span class="text-gray-400">Off</span>{% endif %}
+                        {% else %}
+                        <span class="text-gray-400">Off</span>
+                        {% endif %}
+                    </td>
+                    {% endfor %}
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-center">
+                        {% if schedule.exceptions %}{{ schedule.exceptions|length }}{% else %}0{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if schedule.is_default %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                            {% if schedule.is_default %}Yes{% else %}No{% endif %}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium {% if schedule.is_active %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">
+                            {% if schedule.is_active %}Active{% else %}Inactive{% endif %}
+                        </span>
+                    </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <a href="{{ url_for('admin.edit_working_schedule', schedule_id=schedule.id) }}" class="text-primary-600 hover:text-primary-900">Edit</a>
+                        <form method="POST" action="{{ url_for('admin.delete_working_schedule', schedule_id=schedule.id) }}" class="inline" onsubmit="return confirm('Deactivate this schedule?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="text-red-600 hover:text-red-900">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-12">
+        <i class="fas fa-calendar-alt text-4xl text-gray-300 mb-4"></i>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">No working schedules found</h3>
+        <p class="text-gray-500 mb-6">Get started by creating your first working schedule.</p>
+        <a href="{{ url_for('admin.create_working_schedule') }}" class="btn btn-primary">
+            <i class="fas fa-plus mr-2"></i>Create Schedule
+        </a>
+    </div>
+    {% endif %}
+</div>
+</div>
+{% endblock %}

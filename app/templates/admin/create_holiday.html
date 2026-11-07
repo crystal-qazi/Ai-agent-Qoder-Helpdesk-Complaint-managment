@@ -1,0 +1,63 @@
+{% extends "layouts/base.html" %}
+{% block title %}{% if holiday %}Edit Holiday{% else %}Create Holiday{% endif %} - Admin{% endblock %}
+{% block page_title %}{% if holiday %}Edit Holiday{% else %}Create Holiday{% endif %}{% endblock %}
+{% block page_description %}{% if holiday %}Update holiday details{% else %}Add a new holiday to the calendar{% endif %}{% endblock %}
+{% block breadcrumb_items %}
+<li><a href="{{ url_for('admin.index') }}" class="text-gray-500 hover:text-gray-700">Admin</a></li>
+<li class="text-gray-400">/</li>
+<li><a href="{{ url_for('admin.list_holidays') }}" class="text-gray-500 hover:text-gray-700">Holidays</a></li>
+<li class="text-gray-400">/</li>
+<li class="text-gray-900 font-medium">{% if holiday %}Edit{% else %}Create{% endif %}</li>
+{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <form method="POST" action="" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="grid grid-cols-1 gap-6">
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Holiday Name <span class="text-red-500">*</span></label>
+                    <input type="text" name="name" id="name" value="{{ holiday.name if holiday else '' }}" required
+                           class="form-input" placeholder="e.g., Eid ul-Fitr, Christmas Day">
+                </div>
+
+                <div>
+                    <label for="date" class="block text-sm font-medium text-gray-700 mb-1">Date <span class="text-red-500">*</span></label>
+                    <input type="date" name="date" id="date" value="{{ holiday.date.strftime('%Y-%m-%d') if holiday else '' }}" required
+                           class="form-input">
+                </div>
+
+                <div>
+                    <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea name="description" id="description" rows="3" class="form-textarea"
+                              placeholder="Optional description...">{{ holiday.description if holiday else '' }}</textarea>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="flex items-center">
+                        <input type="checkbox" name="is_recurring" id="is_recurring" value="y"
+                               {% if holiday and holiday.is_recurring %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="is_recurring" class="ml-2 block text-sm text-gray-700">Recurring (same date every year)</label>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" name="is_active" id="is_active" value="y"
+                               {% if not holiday or holiday.is_active %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="is_active" class="ml-2 block text-sm text-gray-700">Active</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-gray-200 flex justify-end space-x-3">
+                <a href="{{ url_for('admin.list_holidays') }}" class="btn btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save mr-2"></i>{% if holiday %}Update{% else %}Create{% endif %} Holiday
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

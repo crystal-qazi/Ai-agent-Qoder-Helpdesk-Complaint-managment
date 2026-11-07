@@ -1,0 +1,71 @@
+{% extends 'layouts/base.html' %}
+
+{% set is_edit = software is defined and software %}
+{% block title %}{{ 'Edit' if is_edit else 'New' }} Software{% endblock %}
+{% block page_title %}{{ 'Edit' if is_edit else 'New' }} Software{% endblock %}
+
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <form method="POST" action="" class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        <div class="space-y-4">
+            <h3 class="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Software Information</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Name <span class="text-red-500">*</span></label>
+                    <input type="text" name="name" id="name" value="{{ software.name if is_edit else '' }}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" maxlength="150">
+                </div>
+                <div>
+                    <label for="code" class="block text-sm font-medium text-gray-700 mb-1">Code <span class="text-red-500">*</span></label>
+                    <input type="text" name="code" id="code" value="{{ software.code if is_edit else '' }}" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" maxlength="50" style="text-transform: uppercase;">
+                    <p class="mt-1 text-sm text-gray-500">Unique code (e.g., EPIC, CERNER, SAP)</p>
+                </div>
+                <div>
+                    <label for="vendor" class="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
+                    <input type="text" name="vendor" id="vendor" value="{{ software.vendor or '' if is_edit else '' }}" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" maxlength="100">
+                </div>
+                <div>
+                    <label for="version" class="block text-sm font-medium text-gray-700 mb-1">Version</label>
+                    <input type="text" name="version" id="version" value="{{ software.version or '' if is_edit else '' }}" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" maxlength="50">
+                </div>
+                <div>
+                    <label for="department_id" class="block text-sm font-medium text-gray-700 mb-1">Owning Department</label>
+                    <select name="department_id" id="department_id" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                        <option value="">None</option>
+                        {% for dept in departments %}
+                        <option value="{{ dept.id }}" {% if is_edit and software.department_id == dept.id %}selected{% endif %}>{{ dept.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="license_type" class="block text-sm font-medium text-gray-700 mb-1">License Type</label>
+                    <input type="text" name="license_type" id="license_type" value="{{ software.license_type or '' if is_edit else '' }}" placeholder="Commercial, Open Source, Custom" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" maxlength="50">
+                </div>
+                <div>
+                    <label for="license_expiry" class="block text-sm font-medium text-gray-700 mb-1">License Expiry</label>
+                    <input type="date" name="license_expiry" id="license_expiry" value="{{ software.license_expiry.isoformat() if is_edit and software.license_expiry else '' }}" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">
+                </div>
+                <div>
+                    <label for="vendor_support_url" class="block text-sm font-medium text-gray-700 mb-1">Vendor Support URL</label>
+                    <input type="url" name="vendor_support_url" id="vendor_support_url" value="{{ software.vendor_support_url or '' if is_edit else '' }}" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent" maxlength="500">
+                </div>
+                <div class="sm:col-span-2">
+                    <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea name="description" id="description" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent">{{ software.description or '' if is_edit else '' }}</textarea>
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" name="is_active" id="is_active" value="1" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded" {% if not is_edit or software.is_active %}checked{% endif %}>
+                    <label for="is_active" class="ml-2 block text-sm text-gray-700">Active</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex justify-end space-x-3 border-t border-gray-200 pt-6">
+<a href="{{ url_for('admin.list_software') }}" class="btn btn-secondary">Cancel</a>
+                    <button type="submit" class="btn btn-primary">{{ 'Update' if is_edit else 'Create' }} Software</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

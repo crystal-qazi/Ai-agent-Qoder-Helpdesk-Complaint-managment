@@ -1,0 +1,215 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}{{ user.full_name }}{% endblock %}
+
+{% block page_title %}{{ user.full_name }}{% endblock %}
+
+{% block page_actions %}
+<div class="flex items-center space-x-2">
+    <a href="{{ url_for('users.edit_user', user_id=user.id) }}" class="btn btn-secondary">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+        </svg>
+        Edit
+    </a>
+    {% if user.id != current_user.id %}
+    {% if user.is_locked %}
+    <form method="POST" action="{{ url_for('users.unlock_user', user_id=user.id) }}" class="inline">
+        <button type="submit" class="btn btn-secondary">Unlock</button>
+    </form>
+    {% endif %}
+    <form method="POST" action="{{ url_for('users.reset_user_password', user_id=user.id) }}" class="inline" onsubmit="return confirm('Reset password for this user?')">
+        <button type="submit" class="btn btn-secondary">Reset Password</button>
+    </form>
+    {% if user.is_active %}
+    <form method="POST" action="{{ url_for('users.delete_user', user_id=user.id) }}" class="inline" onsubmit="return confirm('Deactivate this user?')">
+        <button type="submit" class="btn btn-danger">Deactivate</button>
+    </form>
+    {% else %}
+    <form method="POST" action="{{ url_for('users.delete_user', user_id=user.id) }}" class="inline" onsubmit="return confirm('Activate this user?')">
+        <button type="submit" class="btn btn-secondary">Activate</button>
+    </form>
+    {% endif %}
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div class="flex items-center space-x-6">
+            <div class="h-24 w-24 rounded-full bg-primary-100 flex items-center justify-center">
+                <span class="text-3xl font-bold text-primary-700">{{ user.first_name[0] if user.first_name else 'U' }}{{ user.last_name[0] if user.last_name else '' }}</span>
+            </div>
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900">{{ user.full_name }}</h2>
+                <p class="text-gray-500">@{{ user.username }}</p>
+                <p class="text-gray-500">{{ user.email }}</p>
+            </div>
+            <div class="ml-auto flex items-center space-x-4">
+                {% if user.is_locked %}
+                <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-red-100 text-red-800">Locked</span>
+                {% elif user.is_active %}
+                <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">Active</span>
+                {% else %}
+                <span class="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-gray-100 text-gray-800">Inactive</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Profile Info -->
+        <div class="lg:col-span-2 space-y-6">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
+                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Phone</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ user.phone or '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Extension</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ user.extension or '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Employee Number</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ user.employee_number or '—' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Department</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ user.department.name if user.department else '—' }}</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Account Details</h3>
+                <dl class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Status</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ 'Active' if user.is_active else 'Inactive' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Last Login</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ user.last_login_at.strftime('%Y-%m-%d %H:%M') if user.last_login_at else 'Never' }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Failed Login Attempts</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ user.failed_login_attempts }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Account Created</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ user.created_at.strftime('%Y-%m-%d %H:%M') }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Must Change Password</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ 'Yes' if user.must_change_password else 'No' }}</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <!-- Roles -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Roles</h3>
+                {% if user_roles %}
+                <div class="space-y-3">
+                    {% for role in user_roles %}
+                    <div class="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <h4 class="font-medium text-gray-900">{{ role.display_name }}</h4>
+                                <p class="text-sm text-gray-500">{{ role.description or 'No description' }}</p>
+                                <p class="text-xs text-gray-400 mt-1">{{ role.name }}</p>
+                            </div>
+                            <span class="px-2 py-1 text-xs font-medium rounded-full {% if role.is_system %}bg-yellow-100 text-yellow-800{% else %}bg-gray-100 text-gray-800{% endif %}">{{ 'System' if role.is_system else 'Custom' }}</span>
+                        </div>
+                        <div class="mt-3 flex flex-wrap gap-1">
+                            {% for perm in role.permissions %}
+                            <span class="px-2 py-0.5 text-xs bg-gray-200 text-gray-700 rounded">{{ perm.module }}.{{ perm.action }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-gray-500 text-center py-8">No roles assigned</p>
+                {% endif %}
+            </div>
+
+            <!-- Permissions Summary -->
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Effective Permissions</h3>
+                <div class="flex flex-wrap gap-1">
+                    {% for perm in user_permissions %}
+                    <span class="px-2 py-0.5 text-xs bg-primary-100 text-primary-800 rounded">{{ perm }}</span>
+                    {% else %}
+                    <span class="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">No permissions</span>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="space-y-6">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
+                <div class="space-y-2">
+                    <a href="{{ url_for('users.edit_user', user_id=user.id) }}" class="w-full btn btn-secondary text-left justify-start">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                        </svg>
+                        Edit User
+                    </a>
+                    {% if user.id != current_user.id %}
+                    {% if user.is_locked %}
+                    <form method="POST" action="{{ url_for('users.unlock_user', user_id=user.id) }}" class="w-full">
+                        <button type="submit" class="w-full btn btn-secondary text-left justify-start">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                            </svg>
+                            Unlock Account
+                        </button>
+                    </form>
+                    {% endif %}
+                    <form method="POST" action="{{ url_for('users.reset_user_password', user_id=user.id) }}" class="w-full" onsubmit="return confirm('Reset password for this user?')">
+                        <button type="submit" class="w-full btn btn-secondary text-left justify-start">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                            </svg>
+                            Reset Password
+                        </button>
+                    </form>
+                    {% endif %}
+                    <a href="{{ url_for('users.list_users') }}" class="w-full btn btn-secondary text-left justify-start">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                        </svg>
+                        Back to List
+                    </a>
+                </div>
+            </div>
+
+            <!-- Recent Login Attempts -->
+            {% if login_attempts %}
+            <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+                <h3 class="text-lg font-semibold text-gray-900 mb-4">Recent Login Attempts</h3>
+                <div class="space-y-3">
+                    {% for attempt in login_attempts %}
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div>
+                            <p class="text-sm font-medium text-gray-900">{{ 'Success' if attempt.success else 'Failed' }}</p>
+                            <p class="text-xs text-gray-500">{{ attempt.ip_address }} • {{ attempt.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                        </div>
+                        <span class="text-xs font-medium {% if attempt.success %}text-green-600{% else %}text-red-600{% endif %}">
+                            {% if attempt.success %}✓{% else %}✗{% endif %}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

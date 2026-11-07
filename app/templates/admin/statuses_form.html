@@ -1,0 +1,132 @@
+{% extends "layouts/base.html" %}
+{% block title %}{% if status %}Edit Status{% else %}Create Status{% endif %} - Admin{% endblock %}
+{% block page_title %}{% if status %}Edit Status{% else %}Create Status{% endif %}{% endblock %}
+{% block page_description %}{% if status %}Update status details{% else %}Add a new status to the workflow{% endif %}{% endblock %}
+{% block breadcrumb_items %}
+<li><a href="{{ url_for('admin.index') }}" class="text-gray-500 hover:text-gray-700">Admin</a></li>
+<li class="text-gray-400">/</li>
+<li><a href="{{ url_for('admin.list_statuses') }}" class="text-gray-500 hover:text-gray-700">Statuses</a></li>
+<li class="text-gray-400">/</li>
+<li class="text-gray-900 font-medium">{% if status %}Edit{% else %}Create{% endif %}</li>
+{% endblock %}
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <form method="POST" action="" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <div class="grid grid-cols-1 gap-6">
+                <div class="col-span-1 sm:col-span-2">
+                    <label for="name" class="block text-sm font-medium text-gray-700 mb-1">Status Name <span class="text-red-500">*</span></label>
+                    <input type="text" name="name" id="name" value="{{ status.name if status else '' }}" required
+                           class="form-input {% if form.name.errors %}border-red-500{% endif %}"
+                           placeholder="e.g., New, In Progress, Resolved">
+                </div>
+
+                <div>
+                    <label for="code" class="block text-sm font-medium text-gray-700 mb-1">Code <span class="text-red-500">*</span></label>
+                    <input type="text" name="code" id="code" value="{{ status.code if status else '' }}" required maxlength="20"
+                           class="form-input uppercase font-mono"
+                           placeholder="e.g., NEW, IN_PROGRESS, RESOLVED">
+                    {% if form.code.errors %}
+                    <div class="mt-1 text-sm text-red-600">{{ form.code.errors[0] }}</div>
+                    {% endif %}
+                    <p class="mt-1 text-sm text-gray-500">Unique code used in the system. Cannot be changed after creation.</p>
+                </div>
+
+                <div>
+                    <label for="color" class="block text-sm font-medium text-gray-700 mb-1">Color <span class="text-red-500">*</span></label>
+                    <div class="flex items-center space-x-3">
+                        <input type="color" name="color" id="color" value="{{ status.color if status else '#6b7280' }}"
+                               class="w-10 h-10 rounded border border-gray-300 cursor-pointer">
+                        <input type="text" name="color_hex" id="color_hex" value="{{ status.color if status else '#6b7280' }}"
+                               class="form-input flex-1 font-mono" placeholder="#6b7280" maxlength="7">
+                    </div>
+                </div>
+
+                <div>
+                    <label for="display_order" class="block text-sm font-medium text-gray-700 mb-1">Display Order <span class="text-red-500">*</span></label>
+                    <input type="number" name="display_order" id="display_order" value="{{ status.display_order if status else 0 }}" required min="0"
+                           class="form-input" placeholder="Lower numbers appear first">
+                </div>
+
+                <div>
+                    <label for="description" class="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea name="description" id="description" rows="3"
+                              class="form-textarea"
+                              placeholder="Describe what this status means...">{{ status.description if status else '' }}</textarea>
+                </div>
+
+                <div class="border-t border-gray-200 pt-4">
+                    <h4 class="text-sm font-medium text-gray-700 mb-3">Workflow Settings</h4>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="flex items-center">
+                        <input type="checkbox" name="is_terminal" id="is_terminal" value="y"
+                               {% if status and status.is_terminal %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="is_terminal" class="ml-2 block text-sm text-gray-700">Terminal Status (no further transitions)</label>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" name="is_active" id="is_active" value="y"
+                               {% if not status or status.is_active %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="is_active" class="ml-2 block text-sm text-gray-700">Active</label>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" name="notify_assigned" id="notify_assigned" value="y"
+                               {% if status and status.notify_assigned %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="notify_assigned" class="ml-2 block text-sm text-gray-700">Notify Assigned User</label>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" name="require_resolution_summary" id="require_resolution_summary" value="y"
+                               {% if status and status.require_resolution_summary %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="require_resolution_summary" class="ml-2 block text-sm text-gray-700">Require Resolution Summary</label>
+                    </div>
+
+                    <div class="flex items-center">
+                        <input type="checkbox" name="allow_reopen" id="allow_reopen" value="y"
+                               {% if status and status.allow_reopen %}checked{% endif %}
+                               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                        <label for="allow_reopen" class="ml-2 block text-sm text-gray-700">Allow Reopening</label>
+                    </div>
+                </div>
+
+                <div>
+                    <label for="allowed_next_statuses" class="block text-sm font-medium text-gray-700 mb-1">Allowed Next Statuses</label>
+                    <select name="allowed_next_statuses" id="allowed_next_statuses" multiple
+                            class="form-select min-h-[120px]" size="5">
+                        {% for s in all_statuses %}
+                        {% if not status or s.id != status.id %}
+                        <option value="{{ s.id }}"
+                            {% if status and s.id in status.allowed_next_status_ids %}selected{% endif %}
+                            {% if s.code == 'new' %}style="color: #3b82f6;"
+                            {% elif s.code in ['assigned', 'in_progress', 'pending_info', 'on_hold'] %}style="color: #f59e0b;"
+                            {% elif s.code in ['resolved', 'closed'] %}style="color: #10b981;"
+                            {% elif s.code == 'reopened' %}style="color: #8b5cf6;"
+                            {% elif s.code == 'rejected' %}style="color: #ef4444;"
+                            {% endif %}>
+                            {{ s.name }} ({{ s.code }})
+                        </option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                    <p class="mt-1 text-sm text-gray-500">Hold Ctrl/Cmd to select multiple. Leave empty for any status.</p>
+                </div>
+            </div>
+
+            <div class="mt-6 pt-6 border-t border-gray-200 flex justify-end space-x-3">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save mr-2"></i>{% if status %}Update{% else %}Create{% endif %} Status
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

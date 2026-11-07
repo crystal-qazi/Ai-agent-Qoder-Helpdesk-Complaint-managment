@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Hospital IT Complaint Tracking System">
+    <title>{% block title %}{{ config.APP_NAME }}{% endblock %}</title>
+    
+    <!-- Tailwind CSS (compiled locally) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+
+    <!-- Font Awesome (local, offline) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}">
+    
+    <!-- Chart.js for dashboard charts -->
+    <script src="{{ url_for('static', filename='vendor/chart.min.js') }}"></script>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/favicon.svg') }}">
+    
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+    {% if current_user.is_authenticated %}
+    {% include 'layouts/navbar.html' %}
+    {% endif %}
+
+    <div class="flex flex-1 overflow-hidden {% if current_user.is_authenticated %}lg:pl-64{% endif %}">
+        {% if current_user.is_authenticated %}
+        {% include 'layouts/sidebar.html' %}
+        {% endif %}
+
+        <main class="flex-1 overflow-auto p-4 md:p-6 lg:p-8 w-full">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="fixed top-20 right-4 z-50 space-y-2 max-w-sm">
+                        {% for category, message in messages %}
+                            <div class="bg-white rounded-lg shadow-lg border-l-4 p-4 animate-slide-in
+                                {% if category == 'success' %}border-green-500
+                                {% elif category == 'danger' %}border-red-500
+                                {% elif category == 'warning' %}border-yellow-500
+                                {% else %}border-blue-500{% endif %}">
+                                <div class="flex items-center justify-between">
+                                    <p class="text-sm text-gray-700">{{ message }}</p>
+                                    <button onclick="this.parentElement.parentElement.remove()" class="text-gray-400 hover:text-gray-600">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            {% block page_title %}{% endblock %}
+            {% block page_description %}{% endblock %}
+            {% block page_actions %}{% endblock %}
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+    
+    {% include 'layouts/footer.html' %}
+    
+    <!-- Alpine.js for interactivity -->
+    <script src="{{ url_for('static', filename='vendor/alpine.min.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

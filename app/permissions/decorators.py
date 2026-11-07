@@ -1,0 +1,291 @@
+"""Permission decorators for Flask routes."""
+from functools import wraps
+from flask import abort, flash, redirect, url_for, request
+from flask_login import current_user
+
+
+def permission_required(permission_name):
+    """Decorator to require a specific permission."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for('auth.login', next=request.url))
+            if not current_user.has_permission(permission_name):
+                abort(403)
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def role_required(role_name):
+    """Decorator to require a specific role."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for('auth.login', next=request.url))
+            if not current_user.has_role(role_name):
+                abort(403)
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def any_role_required(*role_names):
+    """Decorator to require any of the specified roles."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                return redirect(url_for('auth.login', next=request.url))
+            if not current_user.has_any_role(role_names):
+                abort(403)
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+# Convenience decorators for common roles
+def admin_required(f):
+    """Require Admin role."""
+    return role_required('admin')(f)
+
+
+def agent_required(f):
+    """Require Agent role."""
+    return role_required('agent')(f)
+
+
+def engineer_required(f):
+    """Require Software Engineer role."""
+    return role_required('engineer')(f)
+
+
+def intake_required(f):
+    """Require Call Intake User role."""
+    return role_required('intake')(f)
+
+
+def employee_required(f):
+    """Require Internal Employee role."""
+    return role_required('employee')(f)
+
+
+# Complaint-specific permission decorators
+def can_view_complaint(f):
+    """Check if user can view a complaint."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        complaint_id = kwargs.get('complaint_id') or kwargs.get('id')
+        if complaint_id:
+            from app.models import Complaint
+            from app.permissions.policy import PermissionPolicy
+            complaint = Complaint.query.get_or_404(complaint_id)
+            if not PermissionPolicy.can_view_complaint(current_user, complaint):
+                abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_edit_complaint(f):
+    """Check if user can edit a complaint."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        complaint_id = kwargs.get('complaint_id') or kwargs.get('id')
+        if complaint_id:
+            from app.models import Complaint
+            complaint = Complaint.query.get_or_404(complaint_id)
+            
+            # Admin can edit all
+            if current_user.has_permission('complaints.edit'):
+                return f(*args, **kwargs)
+            
+            # Creator can edit (with permission)
+            if complaint.created_by_user_id == current_user.id and current_user.has_permission('complaints.edit_own'):
+                return f(*args, **kwargs)
+            
+            # Assignee can edit (with permission)
+            if complaint.assigned_to_user_id == current_user.id and current_user.has_permission('complaints.edit_assigned'):
+                return f(*args, **kwargs)
+            
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_assign_complaint(f):
+    """Check if user can assign a complaint."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        if not current_user.has_permission('complaints.assign'):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_resolve_complaint(f):
+    """Check if user can resolve a complaint."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        complaint_id = kwargs.get('complaint_id') or kwargs.get('id')
+        if complaint_id:
+            from app.models import Complaint
+            complaint = Complaint.query.get_or_404(complaint_id)
+            
+            # Admin can resolve all
+            if current_user.has_permission('complaints.resolve'):
+                return f(*args, **kwargs)
+            
+            # Assignee can resolve
+            if complaint.assigned_to_user_id == current_user.id and current_user.has_permission('complaints.resolve_assigned'):
+                return f(*args, **kwargs)
+            
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_close_complaint(f):
+    """Check if user can close a complaint."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        complaint_id = kwargs.get('complaint_id') or kwargs.get('id')
+        if complaint_id:
+            from app.models import Complaint
+            complaint = Complaint.query.get_or_404(complaint_id)
+            
+            # Admin can close all
+            if current_user.has_permission('complaints.close'):
+                return f(*args, **kwargs)
+            
+            # Assignee with permission can close
+            if complaint.assigned_to_user_id == current_user.id and current_user.has_permission('complaints.close_assigned'):
+                return f(*args, **kwargs)
+            
+            # Agent with permission can close
+            if current_user.has_permission('complaints.close'):
+                return f(*args, **kwargs)
+            
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_reopen_complaint(f):
+    """Check if user can reopen a complaint."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        if not current_user.has_permission('complaints.reopen'):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_delete_complaint(f):
+    """Check if user can delete a complaint."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        if not current_user.has_permission('complaints.delete'):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_view_all_complaints(f):
+    """Check if user can view all complaints."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        if not current_user.has_permission('complaints.view_all'):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_export_reports(f):
+    """Check if user can export reports."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        if not current_user.has_permission('reports.export'):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_manage_users(f):
+    """Check if user can manage users."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        if not current_user.has_permission('users.manage'):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_manage_roles(f):
+    """Check if user can manage roles."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        if not current_user.has_permission('roles.manage'):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_manage_config(f):
+    """Check if user can manage configuration."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        if not current_user.has_permission('config.manage'):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def can_view_audit_logs(f):
+    """Check if user can view audit logs."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login', next=request.url))
+        
+        if not current_user.has_permission('audit.view'):
+            abort(403)
+        return f(*args, **kwargs)
+    return decorated_function

@@ -1,0 +1,114 @@
+{% extends "layouts/base.html" %}
+{% block title %}Notification - {{ notification.title }}{% endblock %}
+{% block page_title %}Notification Details{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+        <!-- Header -->
+        <div class="flex items-start space-x-4 mb-6">
+            <div class="w-12 h-12 rounded-full flex items-center justify-center
+                {% if notification.notification_type == 'sla_breach' %}bg-red-100
+                {% elif notification.notification_type == 'escalation' %}bg-orange-100
+                {% elif notification.notification_type == 'assignment' %}bg-blue-100
+                {% elif notification.notification_type == 'status_change' %}bg-yellow-100
+                {% elif notification.notification_type == 'comment' %}bg-green-100
+                {% else %}bg-gray-100{% endif %}">
+                <i class="fas
+                    {% if notification.notification_type == 'sla_breach' %}fa-exclamation-triangle text-red-600
+                    {% elif notification.notification_type == 'escalation' %}fa-level-up-alt text-orange-600
+                    {% elif notification.notification_type == 'assignment' %}fa-user-plus text-blue-600
+                    {% elif notification.notification_type == 'status_change' %}fa-exchange-alt text-yellow-600
+                    {% elif notification.notification_type == 'comment' %}fa-comment text-green-600
+                    {% else %}fa-bell text-gray-600{% endif %}">
+                </i>
+            </div>
+            <div class="flex-1">
+                <h1 class="text-xl font-semibold text-gray-900">{{ notification.title }}</h1>
+                <p class="text-sm text-gray-500 mt-1">
+                    {{ notification.created_at.strftime('%B %d, %Y at %I:%M %p') if notification.created_at else '' }}
+                    {% if not notification.is_read %}<span class="ml-2 text-blue-500 font-medium">· Unread</span>{% endif %}
+                </p>
+            </div>
+            <div class="flex items-center space-x-2">
+                {% if not notification.is_read %}
+                <button type="button" onclick="markRead()" class="btn btn-secondary text-sm">
+                    <i class="fas fa-check mr-2"></i>Mark Read
+                </button>
+                {% endif %}
+                <a href="{{ url_for('notifications.list_notifications') }}" class="btn btn-secondary text-sm">
+                    <i class="fas fa-arrow-left mr-2"></i>Back
+                </a>
+            </div>
+        </div>
+
+        <!-- Message -->
+        <div class="prose prose-sm max-w-none mb-6">
+            <p class="text-gray-700">{{ notification.message }}</p>
+        </div>
+
+        <!-- Metadata -->
+        <div class="border-t border-gray-200 pt-6">
+            <h4 class="text-sm font-medium text-gray-700 mb-3">Details</h4>
+            <dl class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                    <dt class="text-gray-500">Type</dt>
+                    <dd class="font-medium text-gray-900 capitalize">{{ notification.notification_type.replace('_', ' ') }}</dd>
+                </div>
+                <div>
+                    <dt class="text-gray-500">Priority</dt>
+                    <dd class="font-medium text-gray-900 capitalize">{{ notification.priority or 'Normal' }}</dd>
+                </div>
+                {% if notification.complaint %}
+                <div>
+                    <dt class="text-gray-500">Related Complaint</dt>
+                    <dd>
+                        <a href="{{ url_for('complaints.view_complaint', complaint_id=notification.complaint.id) }}"
+                           class="font-medium text-primary-600 hover:text-primary-900">
+                            #{{ notification.complaint.complaint_number }} - {{ notification.complaint.title[:50] }}
+                        </a>
+                    </dd>
+                </div>
+                {% endif %}
+                <div>
+                    <dt class="text-gray-500">Sent To</dt>
+                    <dd class="font-medium text-gray-900">{{ notification.user.username if notification.user else '—' }}</dd>
+                </div>
+            </dl>
+        </div>
+
+        <!-- Actions -->
+        <div class="border-t border-gray-200 pt-6 mt-6 flex space-x-3">
+            {% if notification.complaint %}
+            <a href="{{ url_for('complaints.view_complaint', complaint_id=notification.complaint.id) }}" class="btn btn-primary">
+                <i class="fas fa-external-link-alt mr-2"></i>View Complaint
+            </a>
+            {% endif %}
+            <button type="button" onclick="dismiss()" class="btn btn-secondary">
+                <i class="fas fa-times mr-2"></i>Dismiss
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function markRead() {
+        fetch('{{ url_for("notifications.mark_as_read", notification_id=notification.id) }}', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token() }}'},
+        }).then(r => r.json()).then(data => {
+            if (data.success) location.reload();
+        });
+    }
+
+    function dismiss() {
+        fetch('{{ url_for("notifications.delete_notification", notification_id=notification.id) }}', {
+            method: 'POST',
+            headers: {'X-CSRFToken': '{{ csrf_token() }}'},
+        }).then(r => r.json()).then(data => {
+            if (data.success) window.location.href = '{{ url_for("notifications.list_notifications") }}';
+        });
+    }
+</script>
+{% endblock %}

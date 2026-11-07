@@ -1,0 +1,15 @@
+Flask==3.0.3
+Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.0.5
+Flask-Login==0.6.3
+Flask-WTF==1.2.1
+Werkzeug==3.0.3
+SQLAlchemy==2.0.32
+PyMySQL==1.1.0
+python-dotenv==1.0.1
+bcrypt==4.1.2
+ReportLab==4.2.2
+Chart.js==4.4.3
+WTForms==3.1.1
+email-validator==2.1.0
+Pillow==10.3.0

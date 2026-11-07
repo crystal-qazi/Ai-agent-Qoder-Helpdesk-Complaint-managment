@@ -1,0 +1,106 @@
+{% extends "layouts/base.html" %}
+{% block title %}Generate Report{% endblock %}
+{% block page_title %}Generate Report{% endblock %}
+{% block page_description %}Select filters and generate your report{% endblock %}
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Report Configuration</h3>
+        <form method="POST" action="{{ url_for('reports.generate_report') }}" class="space-y-6">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            
+            <!-- Date Range -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="form-label">Start Date</label>
+                    <input type="date" name="date_from" value="{{ filters.date_from if filters else '' }}" class="form-input">
+                </div>
+                <div>
+                    <label class="form-label">End Date</label>
+                    <input type="date" name="date_to" value="{{ filters.date_to if filters else '' }}" class="form-input">
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="form-label">Department</label>
+                    <select name="department_id" class="form-select">
+                        <option value="">All Departments</option>
+                        {% for dept in departments %}
+                        <option value="{{ dept.id }}" {% if filters and filters.department_id == dept.id %}selected{% endif %}>{{ dept.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Priority</label>
+                    <select name="priority_id" class="form-select">
+                        <option value="">All Priorities</option>
+                        {% for pri in priorities %}
+                        <option value="{{ pri.id }}" {% if filters and filters.priority_id == pri.id %}selected{% endif %}>{{ pri.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Status</label>
+                    <select name="status_id" class="form-select">
+                        <option value="">All Statuses</option>
+                        {% for stat in statuses %}
+                        <option value="{{ stat.id }}" {% if filters and filters.status_id == stat.id %}selected{% endif %}>{{ stat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="form-label">Software</label>
+                    <select name="software_id" class="form-select">
+                        <option value="">All Software</option>
+                        {% for sw in software %}
+                        <option value="{{ sw.id }}" {% if filters and filters.software_id == sw.id %}selected{% endif %}>{{ sw.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Category</label>
+                    <select name="category_id" class="form-select">
+                        <option value="">All Categories</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}" {% if filters and filters.category_id == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Assigned To</label>
+                    <select name="assigned_to_user_id" class="form-select">
+                        <option value="">All Assignees</option>
+                        {% for user in users %}
+                        <option value="{{ user.id }}" {% if filters and filters.assigned_to_user_id == user.id %}selected{% endif %}>{{ user.username }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Report Type -->
+            <div>
+                <label class="form-label">Report Type</label>
+                <select name="report_type" class="form-select">
+                    <option value="complaint_summary" {% if report_type == 'complaint_summary' %}selected{% endif %}>Complaint Summary</option>
+                    <option value="sla_compliance" {% if report_type == 'sla_compliance' %}selected{% endif %}>SLA Compliance</option>
+                    <option value="overdue" {% if report_type == 'overdue' %}selected{% endif %}>Overdue Complaints</option>
+                    <option value="reopened" {% if report_type == 'reopened' %}selected{% endif %}>Reopened Complaints</option>
+                </select>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
+                <a href="{{ url_for('reports.index') }}" class="btn-secondary">Cancel</a>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-cogs mr-2"></i>Generate Report
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

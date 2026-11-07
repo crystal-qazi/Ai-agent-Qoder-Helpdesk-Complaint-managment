@@ -1,0 +1,64 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Software Catalog{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">Software Catalog</h1>
+            <p class="mt-1 text-sm text-gray-500">Track software, licenses, and expiry across the hospital.</p>
+        </div>
+        <a href="{{ url_for('admin.create_software') }}" class="btn btn-primary">+ New Software</a>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+    <div class="overflow-x-auto">
+        <table class="w-full">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vendor</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Version</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Department</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">License Expiry</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-200">
+                {% for sw in software %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{{ sw.name }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ sw.code }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ sw.vendor or '—' }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ sw.version or '—' }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ sw.department.name if sw.department else '—' }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{{ sw.license_expiry.strftime('%Y-%m-%d') if sw.license_expiry else '—' }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if sw.is_active %}
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800">Active</span>
+                        {% else %}
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">Inactive</span>
+                        {% endif %}
+                    </td>
+                                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                        <a href="{{ url_for('admin.edit_software', sw_id=sw.id) }}" class="text-primary-600 hover:text-primary-900">Edit</a>
+                        <form method="POST" action="{{ url_for('admin.toggle_software', sw_id=sw.id) }}" class="inline" onsubmit="return confirm('{{ 'Deactivate' if sw.is_active else 'Activate' }} this software?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="{{ 'text-gray-600 hover:text-gray-900' if sw.is_active else 'text-green-600 hover:text-green-900' }}">{{ 'Deactivate' if sw.is_active else 'Activate' }}</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" class="px-6 py-12 text-center text-gray-500">No software found</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+{% endblock %}

@@ -1,0 +1,67 @@
+{% extends "layouts/base.html" %}
+{% block title %}Reopened Complaints - Reports{% endblock %}
+{% block page_title %}Reopened Complaints{% endblock %}
+{% block page_description %}Complaints that were reopened after resolution{% endblock %}
+{% block content %}
+<div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+        <div>
+            <h3 class="text-lg font-semibold text-gray-900">Reopened Complaints</h3>
+            <p class="text-sm text-gray-500">Showing last {{ days }} days</p>
+        </div>
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800">
+            {{ reopened|length }} complaints
+        </span>
+    </div>
+    {% if reopened %}
+    <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Complaint #</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Title</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Priority</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Originally Resolved</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Reopened</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Assigned To</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="bg-white divide-y divide-gray-200">
+                {% for complaint in reopened %}
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-600">{{ complaint.complaint_number }}</td>
+                    <td class="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">{{ complaint.title }}</td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        {% if complaint.priority %}
+                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium" style="background-color: {{ complaint.priority.color }}20; color: {{ complaint.priority.color }};">
+                            {{ complaint.priority.name }}
+                        </span>
+                        {% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {% if complaint.resolved_at %}{{ complaint.resolved_at.strftime('%Y-%m-%d %H:%M') }}{% else %}-{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-yellow-600 font-medium">
+                        {% if complaint.reopened_at %}{{ complaint.reopened_at.strftime('%Y-%m-%d %H:%M') }}{% else %}Recent{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {% if complaint.assigned_to %}{{ complaint.assigned_to.username }}{% else %}<span class="text-gray-400">Unassigned</span>{% endif %}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right">
+                        <a href="{{ url_for('complaints.view_complaint', complaint_id=complaint.id) }}" class="text-indigo-600 hover:text-indigo-900 text-sm">View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center py-12">
+        <i class="fas fa-check-circle text-4xl text-gray-300 mb-4"></i>
+        <h3 class="text-lg font-medium text-gray-900 mb-2">No reopened complaints</h3>
+        <p class="text-gray-500">All complaints have been resolved without reopening in the selected period.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
