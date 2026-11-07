@@ -34,7 +34,7 @@ def login():
                     AuditService.log_login(user.id, data['username'], False, 'account_inactive')
                 else:
                     # Successful login
-                    login_user(user, remember=data.get('remember') == 'on')
+                    login_user(user, remember=data.get('remember_me') == 'on')
                     user.record_login(request.remote_addr)
                     
                     # Log successful login
@@ -70,7 +70,7 @@ def login():
     return render_template('auth/login.html')
 
 
-@auth_bp.route('/logout')
+@auth_bp.route('/logout', methods=['POST'])
 @login_required
 def logout():
     """User logout."""
