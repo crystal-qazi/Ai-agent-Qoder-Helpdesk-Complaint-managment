@@ -94,7 +94,10 @@ def create_tables():
         display_order INTEGER NOT NULL DEFAULT 0, description TEXT, is_terminal INTEGER DEFAULT 0,
         is_active INTEGER DEFAULT 1, notify_assigned INTEGER DEFAULT 0,
         require_resolution_summary INTEGER DEFAULT 0, allow_reopen INTEGER DEFAULT 0,
-        allowed_next_statuses TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        allowed_next_statuses TEXT, allowed_transitions TEXT DEFAULT NULL,
+        category VARCHAR(20), is_initial INTEGER DEFAULT 0,
+        requires_reason INTEGER DEFAULT 0, requires_resolution INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, created_by_user_id INTEGER,
         updated_by_user_id INTEGER, deleted_at DATETIME, deleted_by_user_id INTEGER,
         version INTEGER DEFAULT 1)''')
@@ -294,9 +297,19 @@ def seed_data():
         print(f'Created admin user (ID: {aid})')
 
     # Statuses
-    statuses = [('New', 'new', '#3b82f6', 1, 1, 0), ('Assigned', 'assigned', '#8b5cf6', 2, 1, 0), ('In Progress', 'in_progress', '#f59e0b', 3, 1, 0), ('Pending Info', 'pending_info', '#f97316', 4, 1, 0), ('On Hold', 'on_hold', '#6b7280', 5, 1, 0), ('Resolved', 'resolved', '#10b981', 6, 1, 1), ('Closed', 'closed', '#6b7280', 7, 1, 1), ('Reopened', 'reopened', '#ef4444', 8, 1, 0), ('Rejected', 'rejected', '#dc2626', 9, 1, 1)]
-    for n, code, color, order, terminal, active in statuses:
-        c.execute('INSERT OR IGNORE INTO statuses (name, code, color, display_order, is_terminal, is_active) VALUES (?, ?, ?, ?, ?, ?)', (n, code, color, order, terminal, active))
+    statuses = [
+        ('New', 'new', '#3b82f6', 1, 0, 0, '[2,3,4,5,6,9]', 'intake', 1, 0, 0),
+        ('Assigned', 'assigned', '#8b5cf6', 2, 0, 0, '[3,4,5,7]', 'processing', 0, 0, 0),
+        ('In Progress', 'in_progress', '#f59e0b', 3, 0, 0, '[4,5,6]', 'processing', 0, 0, 0),
+        ('Pending Info', 'pending_info', '#f97316', 4, 0, 0, '[3,5,6]', 'pending', 0, 0, 0),
+        ('On Hold', 'on_hold', '#6b7280', 5, 0, 0, '[3,4,6]', 'processing', 0, 0, 0),
+        ('Resolved', 'resolved', '#10b981', 6, 0, 1, '[8]', 'resolution', 0, 0, 1),
+        ('Closed', 'closed', '#6b7280', 7, 1, 0, '[]', 'resolution', 0, 0, 0),
+        ('Reopened', 'reopened', '#ef4444', 8, 0, 0, '[3,4,5,6]', 'processing', 0, 0, 0),
+        ('Rejected', 'rejected', '#dc2626', 9, 1, 1, '[]', 'resolution', 0, 1, 0),
+    ]
+    for n, code, color, order, terminal, active, transitions, category, is_init, req_reason, req_res in statuses:
+        c.execute('INSERT OR IGNORE INTO statuses (name, code, color, display_order, is_terminal, is_active, allowed_transitions, category, is_initial, requires_reason, requires_resolution) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (n, code, color, order, terminal, active, transitions, category, is_init, req_reason, req_res))
     print(f'Inserted {len(statuses)} statuses')
 
     # Priorities

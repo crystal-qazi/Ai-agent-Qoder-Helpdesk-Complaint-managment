@@ -288,7 +288,7 @@ class ComplaintService:
         if new_status.requires_reason and not reason:
             return False, f'Reason is required for status "{new_status.name}".'
         
-        if new_status.requires_resolution and new_status.category in ['resolved', 'closed']:
+        if new_status.requires_resolution and new_status.code in ('resolved', 'closed'):
             if not resolution_summary and not complaint.resolution_summary:
                 return False, 'Resolution summary is required for this status.'
             if resolution_summary:
@@ -311,10 +311,10 @@ class ComplaintService:
         
         # Handle special status timestamps
         now = datetime.utcnow()
-        if new_status.category == 'resolved' and not complaint.resolved_at:
+        if new_status.code == 'resolved' and not complaint.resolved_at:
             complaint.resolved_at = now
             complaint.resolved_by_user_id = current_user.id
-        elif new_status.category == 'closed' and not complaint.closed_at:
+        elif new_status.code == 'closed' and not complaint.closed_at:
             complaint.closed_at = now
         elif new_status.code == 'reopened':
             complaint.resolved_at = None
@@ -341,9 +341,9 @@ class ComplaintService:
         NotificationService.notify_status_change(complaint, current_user, old_status, new_status)
         
         # Send resolution/closure/reopen notifications
-        if new_status.category == 'resolved':
+        if new_status.code == 'resolved':
             NotificationService.notify_resolution(complaint, current_user)
-        elif new_status.category == 'closed':
+        elif new_status.code == 'closed':
             NotificationService.notify_closure(complaint, current_user)
         elif new_status.code == 'reopened':
             NotificationService.notify_reopen(complaint, current_user)

@@ -125,7 +125,7 @@ def validate_status_transition(complaint, new_status_id, user, resolution_summar
         # The reason should be provided in the request
         pass  # Handled in the route
     
-    if new_status.requires_resolution and new_status.category in ['resolved', 'closed']:
+    if new_status.requires_resolution and new_status.code in ('resolved', 'closed'):
         if not (resolution_summary or '').strip() and not complaint.resolution_summary:
             errors['resolution_summary'] = 'Resolution summary is required for this status.'
     

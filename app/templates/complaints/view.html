@@ -18,7 +18,7 @@
         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
         </svg>
-        Assign
+        {{ 'Transfer' if complaint.assigned_to else 'Assign' }}
     </button>
     {% endif %}
     {% if current_user.is_authenticated and (current_user.has_permission('complaints.change_status_all') or current_user.has_permission('complaints.change_status_own')) and complaint.status.code not in ['closed'] %}
@@ -324,7 +324,7 @@
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                     </svg>
-                    Assign / Reassign
+                    {{ 'Transfer' if complaint.assigned_to else 'Assign' }}
                 </button>
                 {% endif %}
                 {% if current_user.is_authenticated and (current_user.has_permission('complaints.change_status_all') or current_user.has_permission('complaints.change_status_own')) and complaint.status.code not in ['closed'] %}

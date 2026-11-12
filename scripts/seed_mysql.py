@@ -131,18 +131,18 @@ else:
 
 # Seed statuses
 statuses = [
-    ('New', 'new', '#3b82f6', 1, True, True, 'Initial status', True, False, False),
-    ('Assigned', 'assigned', '#8b5cf6', 2, True, True, 'Assigned', True, False, True),
-    ('In Progress', 'in_progress', '#f59e0b', 3, True, True, 'Work in progress', True, False, True),
-    ('Pending Info', 'pending_info', '#f97316', 4, True, True, 'Waiting for info', True, True, True),
-    ('On Hold', 'on_hold', '#6b7280', 5, True, True, 'Paused', True, False, True),
-    ('Resolved', 'resolved', '#10b981', 6, True, False, 'Resolved', False, True, True),
-    ('Closed', 'closed', '#6b7280', 7, True, False, 'Closed', False, False, False),
-    ('Reopened', 'reopened', '#ef4444', 8, True, True, 'Reopened', True, False, True),
-    ('Rejected', 'rejected', '#dc2626', 9, True, False, 'Rejected', False, False, False),
+    ('New', 'new', '#3b82f6', 1, True, True, 'Initial status', 'open', None, False, False, '[2,3,4,5,6,9]', True),
+    ('Assigned', 'assigned', '#8b5cf6', 2, True, True, 'Assigned', 'processing', 'user-check', False, False, '[3,4,5,7]', False),
+    ('In Progress', 'in_progress', '#f59e0b', 3, True, True, 'Work in progress', 'processing', 'loader', False, False, '[4,5,6]', False),
+    ('Pending Info', 'pending_info', '#f97316', 4, True, True, 'Waiting for info', 'pending', 'help-circle', True, False, '[3,5,6]', False),
+    ('On Hold', 'on_hold', '#6b7280', 5, True, True, 'Paused', 'pending', 'pause', False, False, '[3,4,6]', False),
+    ('Resolved', 'resolved', '#10b981', 6, True, False, 'Resolved', 'resolved', 'check-circle', False, True, '[8]', False),
+    ('Closed', 'closed', '#6b7280', 7, True, False, 'Closed', 'closed', 'lock', False, False, '[]', False),
+    ('Reopened', 'reopened', '#ef4444', 8, True, True, 'Reopened', 'open', 'rotate-ccw', False, False, '[3,4,5,6]', False),
+    ('Rejected', 'rejected', '#dc2626', 9, True, False, 'Rejected', 'closed', 'x-circle', False, False, '[]', False),
 ]
-for name, code, color, order, terminal, active, desc, notify, require_res, allow_reopen in statuses:
-    c.execute('INSERT IGNORE INTO statuses (name, code, color, display_order, is_terminal, is_active, description, notify_assigned, require_resolution_summary, allow_reopen) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)', (name, code, color, order, terminal, active, desc, notify, require_res, allow_reopen))
+for name, code, color, order, terminal, active, desc, category, icon, requires_reason, requires_resolution, allowed_transitions, is_initial in statuses:
+    c.execute('INSERT IGNORE INTO statuses (name, code, color, sort_order, is_terminal, is_active, description, category, icon, requires_reason, requires_resolution, allowed_transitions, is_initial) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)', (name, code, color, order, terminal, active, desc, category, icon, requires_reason, requires_resolution, allowed_transitions, is_initial))
 print(f'Inserted {len(statuses)} statuses')
 
 # Seed priorities

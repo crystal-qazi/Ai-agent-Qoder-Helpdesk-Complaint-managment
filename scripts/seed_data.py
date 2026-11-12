@@ -214,18 +214,18 @@ else:
 
 # Seed statuses
 statuses = [
-    ('New',         'new',        '#3b82f6', 1, 1, 0, 0, 1, 'intake',   None, 'Initial complaint'),
-    ('Assigned',    'assigned',   '#8b5cf6', 2, 1, 0, 0, 0, 'processing', None, 'Waiting for work'),
-    ('In Progress', 'in_progress','#f59e0b', 3, 1, 0, 0, 0, 'processing', None, 'Work underway'),
-    ('Pending Info','pending_info','#f97316', 4, 1, 0, 0, 0, 'processing', None, 'Awaiting response'),
-    ('On Hold',     'on_hold',    '#6b7280', 5, 1, 0, 0, 0, 'processing', None, 'Temporarily paused'),
-    ('Resolved',    'resolved',   '#10b981', 6, 1, 0, 1, 1, 'resolution', None, 'Issue resolved'),
-    ('Closed',      'closed',     '#6b7280', 7, 1, 1, 0, 0, 'resolution', None, 'Formally closed'),
-    ('Reopened',    'reopened',   '#ef4444', 8, 0, 0, 0, 0, 'processing', None, 'Reopened after close'),
-    ('Rejected',    'rejected',   '#dc2626', 9, 1, 0, 1, 0, 'resolution', None, 'Request rejected'),
+    ('New',         'new',        '#3b82f6', 1, 0, 1, 0, 1, 'intake',   None, 'Initial complaint', '[2,3,4,5,6,9]', 1),
+    ('Assigned',    'assigned',   '#8b5cf6', 2, 0, 1, 0, 0, 'processing', None, 'Waiting for work', '[3,4,5,7]', 0),
+    ('In Progress', 'in_progress','#f59e0b', 3, 0, 1, 0, 0, 'processing', None, 'Work underway', '[4,5,6]', 0),
+    ('Pending Info','pending_info','#f97316', 4, 0, 1, 0, 0, 'processing', None, 'Awaiting response', '[3,5,6]', 0),
+    ('On Hold',     'on_hold',    '#6b7280', 5, 0, 1, 0, 0, 'processing', None, 'Temporarily paused', '[3,4,6]', 0),
+    ('Resolved',    'resolved',   '#10b981', 6, 0, 1, 1, 1, 'resolution', None, 'Issue resolved', '[8]', 0),
+    ('Closed',      'closed',     '#6b7280', 7, 1, 1, 0, 0, 'resolution', None, 'Formally closed', '[]', 0),
+    ('Reopened',    'reopened',   '#ef4444', 8, 0, 1, 0, 0, 'processing', None, 'Reopened after close', '[3,4,5,6]', 0),
+    ('Rejected',    'rejected',   '#dc2626', 9, 1, 1, 1, 0, 'resolution', None, 'Request rejected', '[]', 0),
 ]
-for name, code, color, order, terminal, active, requires_reason, requires_resolution, category, icon, desc in statuses:
-    c.execute(f'{insert_sql} INTO statuses (name, code, color, sort_order, is_terminal, is_active, requires_reason, requires_resolution, category, icon, description) VALUES ({param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style})', (name, code, color, order, terminal, active, requires_reason, requires_resolution, category, icon, desc))
+for name, code, color, order, terminal, active, requires_reason, requires_resolution, category, icon, desc, allowed_transitions, is_initial in statuses:
+    c.execute(f'{insert_sql} INTO statuses (name, code, color, sort_order, is_terminal, is_active, requires_reason, requires_resolution, category, icon, description, allowed_transitions, is_initial) VALUES ({param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style})', (name, code, color, order, terminal, active, requires_reason, requires_resolution, category, icon, desc, allowed_transitions, is_initial))
 print(f'Inserted {len(statuses)} statuses')
 
 # Seed priorities
