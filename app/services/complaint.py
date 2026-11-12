@@ -384,12 +384,16 @@ class ComplaintService:
         )
         db.session.add(comment)
 
-        # Track first response: set when a non-reporter adds an internal comment
-        if (
-            visibility == 'internal'
+        # Track first response: the first support response that becomes
+        # visible to the reporter (reporter-visible comment, or an assignment).
+        # Internal comments are not counted because the reporter does not
+        # receive them.
+        counts_as_response = (
+            visibility == 'reporter_visible'
             and complaint.first_response_at is None
             and complaint.reported_by_user_id != current_user.id
-        ):
+        )
+        if counts_as_response:
             complaint.first_response_at = datetime.utcnow()
         
         # Create history
@@ -585,7 +589,14 @@ class ComplaintService:
         from app.permissions.policy import PermissionPolicy
         
         query = PermissionPolicy.get_accessible_complaints_query(user)
-        
+
+        # "My Complaints": restrict to complaints the user reported or is assigned to.
+        if query_params.get('my_complaints'):
+            query = query.filter(db.or_(
+                Complaint.reported_by_user_id == user.id,
+                Complaint.assigned_to_user_id == user.id,
+            ))
+
         # Apply filters
         if query_params.get('search'):
             search = f"%{query_params['search']}%"

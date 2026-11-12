@@ -37,7 +37,7 @@
                     <span>New Complaint</span>
                 </a>
                 {% endif %}
-                <a href="{{ url_for('complaints.list_complaints', assigned_to_user_id=current_user.id) if current_user.is_authenticated else url_for('complaints.list_complaints') }}" class="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-100 hover:text-gray-900 {% if request.endpoint == 'complaints.list_complaints' %}bg-primary-50 text-primary-700{% endif %}">
+                <a href="{{ url_for('complaints.list_complaints', my=1) if current_user.is_authenticated else url_for('complaints.list_complaints') }}" class="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-100 hover:text-gray-900 {% if request.endpoint == 'complaints.list_complaints' and request.args.get('my') %}bg-primary-50 text-primary-700{% endif %}">
                     <svg class="h-5 w-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                     </svg>

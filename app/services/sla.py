@@ -92,6 +92,7 @@ class SLAService:
         remaining_minutes = target_minutes
         current_time = start_time
         iterations = 0
+        previous_time = current_time
 
         while remaining_minutes > 0 and iterations < SLAService.MAX_DEADLINE_ITERATIONS:
             # Check if current time is within working hours
@@ -111,7 +112,23 @@ class SLAService:
             else:
                 # Outside working hours, move to next working period
                 current_time = SLAService._next_working_period(current_time, working_schedule)
+
+            # Guarantee forward progress: an invalid schedule (no usable
+            # working window in the lookahead) will stall the loop, which would
+            # otherwise hit the cap below and produce a silently wrong deadline.
+            if current_time <= previous_time:
+                current_time = previous_time + timedelta(minutes=1)
+            previous_time = current_time
             iterations += 1
+
+        if remaining_minutes > 0:
+            raise ValueError(
+                f'Could not compute a valid SLA deadline within '
+                f'{SLAService.MAX_DEADLINE_ITERATIONS} iterations for a '
+                f'{target_minutes}-minute target: the working schedule has no '
+                f'valid forward-progress window. Review the schedule for '
+                f'missing or malformed working days.'
+            )
 
         return current_time
     

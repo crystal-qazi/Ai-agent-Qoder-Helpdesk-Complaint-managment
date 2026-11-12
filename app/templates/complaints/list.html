@@ -2,7 +2,7 @@
 
 {% block title %}Complaints{% endblock %}
 
-{% block page_title %}{% if current_user.is_authenticated and request.args.get('assigned_to_user_id') == current_user.id|string %}My Complaints{% else %}All Complaints{% endif %}{% endblock %}
+{% block page_title %}{% if current_user.is_authenticated and (request.args.get('my') or request.args.get('assigned_to_user_id') == current_user.id|string) %}My Complaints{% else %}All Complaints{% endif %}{% endblock %}
 {% block page_description %}View, filter and manage hospital complaints{% endblock %}
 
 {% block content %}

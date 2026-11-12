@@ -30,8 +30,8 @@ complaints_bp = Blueprint('complaints', __name__, url_prefix='/complaints')
 def list_complaints():
     """List complaints with search and filters."""
     # Guard: users who cannot view all complaints may only access the unfiltered
-    # view through "My Complaints". Restrict their base query to their own
-    # complaints instead of an empty page.
+    # view through "My Complaints". Restrict their base query to complaints they
+    # reported or are assigned to, instead of an empty page.
     unfiltered = not any([
         request.args.get('assigned_to_user_id', type=int),
         request.args.get('reported_by_user_id', type=int),
@@ -40,13 +40,16 @@ def list_complaints():
         request.args.get('sla_status'),
     ])
     if unfiltered and not current_user.has_permission('complaints.view_all'):
-        query_params_override = {'assigned_to_user_id': current_user.id}
+        query_params_override = {
+            'my_complaints': True,
+        }
     else:
         query_params_override = {}
 
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-    
+    is_my_view = request.args.get('my') in ('1', 'true', 'True')
+
     # Build query params
     query_params = {
         'search': request.args.get('search', '').strip() or None,
@@ -62,6 +65,8 @@ def list_complaints():
         'date_to': request.args.get('date_to') or None,
         'sla_status': request.args.get('sla_status') or None,
     }
+    if is_my_view:
+        query_params['my_complaints'] = True
     query_params.update(query_params_override)
     
     # Parse dates
@@ -114,7 +119,20 @@ def create_complaint():
         data['priority_id'] = int(data['priority_id']) if data.get('priority_id') else None
         data['department_id'] = int(data['department_id']) if data.get('department_id') else None
         data['software_id'] = int(data['software_id']) if data.get('software_id') else None
-        data['reported_by_user_id'] = int(data['reported_by_user_id']) if data.get('reported_by_user_id') else current_user.id
+
+        # Reporter identity: ordinary users can only file for themselves.
+        # Privileged users (complaints.view_all) may file on behalf of another
+        # active user, but the selection must exist and be active.
+        if current_user.has_permission('complaints.view_all'):
+            selected_reporter_id = int(data['reported_by_user_id']) if data.get('reported_by_user_id') else current_user.id
+            reporter = User.query.filter_by(id=selected_reporter_id, is_active=True).first()
+            if reporter is None:
+                flash('Selected reporter does not exist or is inactive.', 'danger')
+                return redirect(url_for('complaints.create_complaint'))
+            data['reported_by_user_id'] = selected_reporter_id
+        else:
+            data['reported_by_user_id'] = current_user.id
+
         data['assigned_to_user_id'] = int(data['assigned_to_user_id']) if data.get('assigned_to_user_id') else None
         data['affected_users_count'] = int(data['affected_users_count']) if data.get('affected_users_count') else 1
         
