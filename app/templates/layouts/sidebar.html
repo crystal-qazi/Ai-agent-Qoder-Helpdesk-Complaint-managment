@@ -21,12 +21,14 @@
                     </svg>
                     <span>Dashboard</span>
                 </a>
-                <a href="{{ url_for('complaints.list_complaints') }}" class="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-100 hover:text-gray-900 {% if request.endpoint == 'complaints.list_complaints' %}bg-primary-50 text-primary-700{% endif %}">
+                {% if current_user.is_authenticated and current_user.has_permission('complaints.view_all') %}
+                <a href="{{ url_for('complaints.list_complaints') }}" class="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-100 hover:text-gray-900 {% if request.endpoint == 'complaints.list_complaints' and request.args.get('assigned_to_user_id') != current_user.id|string %}bg-primary-50 text-primary-700{% endif %}">
                     <svg class="h-5 w-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
                     </svg>
                     <span>All Complaints</span>
                 </a>
+                {% endif %}
                 {% if current_user.is_authenticated and current_user.has_permission('complaints.create') %}
                 <a href="{{ url_for('complaints.create_complaint') }}" class="flex items-center px-3 py-2.5 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-100 hover:text-gray-900 {% if request.endpoint == 'complaints.create_complaint' %}bg-primary-50 text-primary-700{% endif %}">
                     <svg class="h-5 w-5 mr-3 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

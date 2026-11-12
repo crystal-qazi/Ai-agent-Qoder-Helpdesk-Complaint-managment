@@ -15,6 +15,10 @@ class PermissionPolicy:
         if user.has_permission('complaints.view_all'):
             return True
 
+        # Reporters can always see complaints they submitted
+        if complaint.reported_by_user_id == user.id:
+            return True
+
         if user.has_permission('complaints.view_my') and complaint.assigned_to_user_id == user.id:
             return True
 
@@ -168,7 +172,9 @@ class PermissionPolicy:
         if complaint.assigned_to_user_id == user.id:
             return True
         if user.has_permission('comments.view_internal'):
-            return True
+            # Only grant access if user can also view this specific complaint
+            if PermissionPolicy.can_view_complaint(user, complaint):
+                return True
         
         return False
     
@@ -318,7 +324,12 @@ class PermissionPolicy:
             return Complaint.query
 
         if user.has_permission('complaints.view_my'):
-            return Complaint.query.filter(Complaint.assigned_to_user_id == user.id)
+            return Complaint.query.filter(
+                db.or_(
+                    Complaint.assigned_to_user_id == user.id,
+                    Complaint.reported_by_user_id == user.id,
+                )
+            )
 
         return Complaint.query.filter(False)
     

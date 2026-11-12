@@ -27,6 +27,18 @@ def get_connection():
         return conn, 'sqlite'
 
 
+def upsert_ignore(cursor, dialect, table, columns, values):
+    """Insert ignoring duplicates; works on both MySQL and SQLite."""
+    if dialect == 'mysql':
+        ph = ', '.join(['%s'] * len(values))
+        cols = ', '.join(columns)
+        cursor.execute(f'INSERT IGNORE INTO {table} ({cols}) VALUES ({ph})', values)
+    else:
+        ph = ', '.join(['?'] * len(values))
+        cols = ', '.join(columns)
+        cursor.execute(f'INSERT OR IGNORE INTO {table} ({cols}) VALUES ({ph})', values)
+
+
 STALE_PERMISSION_NAMES = {
     'complaints.view',
     'complaints.edit_own',
@@ -72,7 +84,7 @@ def main():
         c.execute('SELECT id FROM permissions')
         all_ids = [r[0] for r in c.fetchall()]
         for pid in all_ids:
-            c.execute(f'INSERT IGNORE INTO role_permissions (role_id, permission_id) VALUES ({param_style}, {param_style})', (admin_id, pid))
+            upsert_ignore(c, dialect, 'role_permissions', ('role_id', 'permission_id'), (admin_id, pid))
         print(f'Re-synced admin role: {len(all_ids)} permissions')
 
     # Remove stale roles that have no matching name in the new schema
@@ -81,6 +93,8 @@ def main():
     c.execute(f'SELECT id, name FROM roles WHERE name IN ({placeholders})', sorted(STALE_ROLE_NAMES))
     stale_roles = c.fetchall()
     if stale_roles:
+        # Warn before removing roles that may still have active user assignments
+        print(f'WARNING: Removing stale roles: {[r[1] for r in stale_roles]}')
         role_ids = [r[0] for r in stale_roles]
         ids_ph = ','.join([param_style] * len(role_ids))
         c.execute(f'DELETE FROM user_roles WHERE role_id IN ({ids_ph})', role_ids)
@@ -88,7 +102,7 @@ def main():
         c.execute(f'DELETE FROM role_permissions WHERE role_id IN ({ids_ph})', role_ids)
         print(f'Removed {c.rowcount} role_permission rows')
         c.execute(f'DELETE FROM roles WHERE id IN ({ids_ph})', role_ids)
-        print(f'Removed stale roles: {[r[1] for r in stale_roles]}')
+        print(f'Removed {c.rowcount} stale roles')
 
     c.execute('SELECT COUNT(*) FROM permissions')
     print(f'Permissions remaining: {c.fetchone()[0]}')

@@ -29,6 +29,21 @@ complaints_bp = Blueprint('complaints', __name__, url_prefix='/complaints')
 @login_required
 def list_complaints():
     """List complaints with search and filters."""
+    # Guard: users who cannot view all complaints may only access the unfiltered
+    # view through "My Complaints". Restrict their base query to their own
+    # complaints instead of an empty page.
+    unfiltered = not any([
+        request.args.get('assigned_to_user_id', type=int),
+        request.args.get('reported_by_user_id', type=int),
+        request.args.get('search', '').strip(),
+        request.args.get('status_id', type=int),
+        request.args.get('sla_status'),
+    ])
+    if unfiltered and not current_user.has_permission('complaints.view_all'):
+        query_params_override = {'assigned_to_user_id': current_user.id}
+    else:
+        query_params_override = {}
+
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     
@@ -47,6 +62,7 @@ def list_complaints():
         'date_to': request.args.get('date_to') or None,
         'sla_status': request.args.get('sla_status') or None,
     }
+    query_params.update(query_params_override)
     
     # Parse dates
     for key in ['date_from', 'date_to']:

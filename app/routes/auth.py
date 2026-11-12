@@ -44,10 +44,13 @@ def login():
                     
                     flash('Welcome back!', 'success')
                     
-                    # Redirect to next page or dashboard
+                    # Redirect to next page or dashboard (same-host only)
                     next_page = request.args.get('next')
-                    if next_page and next_page.startswith('/'):
-                        return redirect(next_page)
+                    if next_page:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(next_page)
+                        if parsed.netloc == '' and not next_page.startswith('//'):
+                            return redirect(next_page)
                     return redirect(url_for('dashboard.index'))
             else:
                 # Failed login
@@ -152,7 +155,7 @@ def profile():
             current_user.last_name = data['last_name'].strip()
             current_user.phone = data.get('phone', '').strip() or None
             current_user.extension = data.get('extension', '').strip() or None
-            current_user.department_id = data.get('department_id', type=int) or None
+            current_user.department_id = int(data.get('department_id') or 0) or None
             
             # Update profile
             profile.email_notifications = data.get('email_notifications', True)

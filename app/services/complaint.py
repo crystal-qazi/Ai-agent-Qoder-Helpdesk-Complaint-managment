@@ -383,6 +383,14 @@ class ComplaintService:
             is_system=False,
         )
         db.session.add(comment)
+
+        # Track first response: set when a non-reporter adds an internal comment
+        if (
+            visibility == 'internal'
+            and complaint.first_response_at is None
+            and complaint.reported_by_user_id != current_user.id
+        ):
+            complaint.first_response_at = datetime.utcnow()
         
         # Create history
         history = ComplaintHistory(

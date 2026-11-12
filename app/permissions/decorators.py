@@ -152,13 +152,22 @@ def can_change_status_complaint(f):
 
         complaint_id = kwargs.get('complaint_id') or kwargs.get('id')
         new_status_id = request.form.get('status_id') if request.form else None
-        if complaint_id and new_status_id:
-            from app.models import Complaint, Status
-            complaint = Complaint.query.get_or_404(complaint_id)
-            new_status = Status.query.get(int(new_status_id))
-            from app.permissions.policy import PermissionPolicy
-            if new_status and not PermissionPolicy.can_change_status(current_user, complaint, new_status):
-                abort(403)
+        if not complaint_id:
+            abort(400)
+        if not new_status_id:
+            abort(400)
+        try:
+            new_status_id = int(new_status_id)
+        except (TypeError, ValueError):
+            abort(400)
+        from app.models import Complaint, Status
+        complaint = Complaint.query.get_or_404(complaint_id)
+        new_status = Status.query.get(new_status_id)
+        if not new_status:
+            abort(404)
+        from app.permissions.policy import PermissionPolicy
+        if not PermissionPolicy.can_change_status(current_user, complaint, new_status):
+            abort(403)
         return f(*args, **kwargs)
     return decorated_function
 

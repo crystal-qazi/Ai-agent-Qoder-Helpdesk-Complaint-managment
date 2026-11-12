@@ -79,18 +79,21 @@ class SLAService:
         # Default policy
         return SLAPolicy.query.filter_by(is_default=True, is_active=True).first()
     
+    MAX_DEADLINE_ITERATIONS = 10000  # Safety cap: ~14 days at 1-minute resolution
+
     @staticmethod
     def calculate_deadline(start_time, target_minutes, working_schedule=None, use_business_hours=True):
         """Calculate SLA deadline based on business hours or calendar hours."""
         if not use_business_hours or not working_schedule:
             # Calendar hours - simple addition
             return start_time + timedelta(minutes=target_minutes)
-        
+
         # Business hours calculation
         remaining_minutes = target_minutes
         current_time = start_time
-        
-        while remaining_minutes > 0:
+        iterations = 0
+
+        while remaining_minutes > 0 and iterations < SLAService.MAX_DEADLINE_ITERATIONS:
             # Check if current time is within working hours
             if SLAService._is_working_time(current_time, working_schedule):
                 # Calculate minutes until end of working day
@@ -108,7 +111,8 @@ class SLAService:
             else:
                 # Outside working hours, move to next working period
                 current_time = SLAService._next_working_period(current_time, working_schedule)
-        
+            iterations += 1
+
         return current_time
     
     @staticmethod
