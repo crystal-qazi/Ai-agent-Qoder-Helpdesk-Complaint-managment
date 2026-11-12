@@ -11,7 +11,7 @@
     <form method="GET" action="{{ url_for('complaints.list_complaints') }}" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Search</label>
-            <input type="text" name="q" value="{{ request.args.get('q', '') }}" placeholder="Complaint #, title, reporter..." class="form-input">
+            <input type="text" name="search" value="{{ request.args.get('search', '') }}" placeholder="Complaint #, title, reporter..." class="form-input">
         </div>
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
@@ -51,11 +51,11 @@
         </div>
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Assigned To</label>
-            <select name="assigned_to" class="form-select">
+            <select name="assigned_to_user_id" class="form-select">
                 <option value="">All Users</option>
-                <option value="unassigned" {% if request.args.get('assigned_to') == 'unassigned' %}selected{% endif %}>Unassigned</option>
+                <option value="unassigned" {% if request.args.get('assigned_to_user_id') == 'unassigned' %}selected{% endif %}>Unassigned</option>
                 {% for user in assignees %}
-                <option value="{{ user.id }}" {% if request.args.get('assigned_to') == user.id|string %}selected{% endif %}>{{ user.full_name }}</option>
+                <option value="{{ user.id }}" {% if request.args.get('assigned_to_user_id') == user.id|string %}selected{% endif %}>{{ user.full_name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -144,7 +144,7 @@
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                         <a href="{{ url_for('complaints.view_complaint', complaint_id=complaint.id) }}" class="text-primary-600 hover:text-primary-900">View</a>
-                        {% if current_user.is_authenticated and current_user.has_permission('complaints.update') and complaint.status.code not in ['closed'] %}
+                        {% if current_user.is_authenticated and current_user.has_permission('complaints.edit') and complaint.status.code not in ['closed'] %}
                         <a href="{{ url_for('complaints.edit_complaint', complaint_id=complaint.id) }}" class="text-gray-600 hover:text-gray-900">Edit</a>
                         {% endif %}
                     </td>

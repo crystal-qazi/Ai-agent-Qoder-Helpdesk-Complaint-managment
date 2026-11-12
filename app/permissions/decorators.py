@@ -97,24 +97,16 @@ def can_edit_complaint(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for('auth.login', next=request.url))
-        
+
         complaint_id = kwargs.get('complaint_id') or kwargs.get('id')
         if complaint_id:
             from app.models import Complaint
             complaint = Complaint.query.get_or_404(complaint_id)
-            
-            # Admin can edit all
+
+            # Admin or anyone with edit permission can edit any complaint
             if current_user.has_permission('complaints.edit'):
                 return f(*args, **kwargs)
-            
-            # Creator can edit (with permission)
-            if complaint.created_by_user_id == current_user.id and current_user.has_permission('complaints.edit_own'):
-                return f(*args, **kwargs)
-            
-            # Assignee can edit (with permission)
-            if complaint.assigned_to_user_id == current_user.id and current_user.has_permission('complaints.edit_assigned'):
-                return f(*args, **kwargs)
-            
+
             abort(403)
         return f(*args, **kwargs)
     return decorated_function
@@ -133,69 +125,40 @@ def can_assign_complaint(f):
     return decorated_function
 
 
-def can_resolve_complaint(f):
-    """Check if user can resolve a complaint."""
+def can_reassign_complaint(f):
+    """Check if user can transfer (reassign) a complaint."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for('auth.login', next=request.url))
-        
+
         complaint_id = kwargs.get('complaint_id') or kwargs.get('id')
         if complaint_id:
             from app.models import Complaint
             complaint = Complaint.query.get_or_404(complaint_id)
-            
-            # Admin can resolve all
-            if current_user.has_permission('complaints.resolve'):
-                return f(*args, **kwargs)
-            
-            # Assignee can resolve
-            if complaint.assigned_to_user_id == current_user.id and current_user.has_permission('complaints.resolve_assigned'):
-                return f(*args, **kwargs)
-            
-            abort(403)
+            from app.permissions.policy import PermissionPolicy
+            if not PermissionPolicy.can_transfer_complaint(current_user, complaint):
+                abort(403)
         return f(*args, **kwargs)
     return decorated_function
 
 
-def can_close_complaint(f):
-    """Check if user can close a complaint."""
+def can_change_status_complaint(f):
+    """Check if user can change status of a complaint."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for('auth.login', next=request.url))
-        
+
         complaint_id = kwargs.get('complaint_id') or kwargs.get('id')
-        if complaint_id:
-            from app.models import Complaint
+        new_status_id = request.form.get('status_id') if request.form else None
+        if complaint_id and new_status_id:
+            from app.models import Complaint, Status
             complaint = Complaint.query.get_or_404(complaint_id)
-            
-            # Admin can close all
-            if current_user.has_permission('complaints.close'):
-                return f(*args, **kwargs)
-            
-            # Assignee with permission can close
-            if complaint.assigned_to_user_id == current_user.id and current_user.has_permission('complaints.close_assigned'):
-                return f(*args, **kwargs)
-            
-            # Agent with permission can close
-            if current_user.has_permission('complaints.close'):
-                return f(*args, **kwargs)
-            
-            abort(403)
-        return f(*args, **kwargs)
-    return decorated_function
-
-
-def can_reopen_complaint(f):
-    """Check if user can reopen a complaint."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated:
-            return redirect(url_for('auth.login', next=request.url))
-        
-        if not current_user.has_permission('complaints.reopen'):
-            abort(403)
+            new_status = Status.query.get(int(new_status_id))
+            from app.permissions.policy import PermissionPolicy
+            if new_status and not PermissionPolicy.can_change_status(current_user, complaint, new_status):
+                abort(403)
         return f(*args, **kwargs)
     return decorated_function
 
@@ -219,7 +182,7 @@ def can_view_all_complaints(f):
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
             return redirect(url_for('auth.login', next=request.url))
-        
+
         if not current_user.has_permission('complaints.view_all'):
             abort(403)
         return f(*args, **kwargs)

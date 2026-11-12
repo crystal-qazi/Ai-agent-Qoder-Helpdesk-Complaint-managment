@@ -5,7 +5,7 @@
 {% block page_title %}{{ complaint.complaint_number }}: {{ complaint.title }}{% endblock %}
 
 {% block page_actions %}
-    {% if current_user.is_authenticated and current_user.has_permission('complaints.update') and complaint.status.code not in ['closed'] %}
+    {% if current_user.is_authenticated and current_user.has_permission('complaints.edit') and complaint.status.code not in ['closed'] %}
     <a href="{{ url_for('complaints.edit_complaint', complaint_id=complaint.id) }}" class="btn btn-secondary">
         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
@@ -21,7 +21,7 @@
         Assign
     </button>
     {% endif %}
-    {% if current_user.is_authenticated and current_user.has_permission('complaints.change_status') and complaint.status.code not in ['closed'] %}
+    {% if current_user.is_authenticated and (current_user.has_permission('complaints.change_status_all') or current_user.has_permission('complaints.change_status_own')) and complaint.status.code not in ['closed'] %}
     <button type="button" class="btn btn-secondary" data-modal-target="status-modal">
         <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -327,7 +327,7 @@
                     Assign / Reassign
                 </button>
                 {% endif %}
-                {% if current_user.is_authenticated and current_user.has_permission('complaints.change_status') and complaint.status.code not in ['closed'] %}
+                {% if current_user.is_authenticated and (current_user.has_permission('complaints.change_status_all') or current_user.has_permission('complaints.change_status_own')) and complaint.status.code not in ['closed'] %}
                 <button type="button" class="w-full btn btn-secondary justify-start" data-modal-target="status-modal">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -335,7 +335,7 @@
                     Change Status
                 </button>
                 {% endif %}
-                {% if current_user.is_authenticated and current_user.has_permission('complaints.update') and complaint.status.code not in ['closed'] %}
+                {% if current_user.is_authenticated and current_user.has_permission('complaints.edit') and complaint.status.code not in ['closed'] %}
                 <a href="{{ url_for('complaints.edit_complaint', complaint_id=complaint.id) }}" class="w-full btn btn-secondary justify-start">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
@@ -398,7 +398,7 @@
 {% endif %}
 
 <!-- Status Change Modal -->
-{% if current_user.is_authenticated and current_user.has_permission('complaints.change_status') and complaint.status.code not in ['closed'] %}
+{% if current_user.is_authenticated and (current_user.has_permission('complaints.change_status_all') or current_user.has_permission('complaints.change_status_own')) and complaint.status.code not in ['closed'] %}
 <div id="status-modal" class="fixed inset-0 z-50 hidden overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="status-modal-title">
     <div class="flex min-h-full items-center justify-center p-4">
         <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="closeModal('status-modal')"></div>

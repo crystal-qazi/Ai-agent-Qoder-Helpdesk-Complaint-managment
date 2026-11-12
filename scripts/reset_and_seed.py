@@ -30,27 +30,16 @@ from app.models import (
 PERMISSIONS = [
     # dashboard
     ('dashboard.view', 'View Dashboard', 'dashboard', 'view'),
-    # complaints
+    # complaints — exactly 9 permissions per spec
     ('complaints.create', 'Create Complaint', 'complaints', 'create'),
     ('complaints.view_all', 'View All Complaints', 'complaints', 'view_all'),
-    ('complaints.view_assigned', 'View Assigned Complaints', 'complaints', 'view_assigned'),
-    ('complaints.edit', 'Edit Any Complaint', 'complaints', 'edit'),
-    ('complaints.edit_own', 'Edit Own Complaint', 'complaints', 'edit_own'),
-    ('complaints.edit_assigned', 'Edit Assigned Complaint', 'complaints', 'edit_assigned'),
-    ('complaints.update', 'Update Complaint', 'complaints', 'update'),
-    ('complaints.assign', 'Assign Complaints', 'complaints', 'assign'),
-    ('complaints.reassign', 'Reassign Any Complaint', 'complaints', 'reassign'),
-    ('complaints.reassign_own', 'Reassign Own Complaint', 'complaints', 'reassign_own'),
-    ('complaints.change_status', 'Change Any Status', 'complaints', 'change_status'),
-    ('complaints.change_status_assigned', 'Change Assigned Status', 'complaints', 'change_status_assigned'),
-    ('complaints.resolve', 'Resolve Any Complaint', 'complaints', 'resolve'),
-    ('complaints.resolve_assigned', 'Resolve Assigned Complaint', 'complaints', 'resolve_assigned'),
-    ('complaints.close', 'Close Any Complaint', 'complaints', 'close'),
-    ('complaints.close_assigned', 'Close Assigned Complaint', 'complaints', 'close_assigned'),
-    ('complaints.reopen', 'Reopen Any Complaint', 'complaints', 'reopen'),
-    ('complaints.reopen_own', 'Reopen Own Complaint', 'complaints', 'reopen_own'),
-    ('complaints.reopen_assigned', 'Reopen Assigned Complaint', 'complaints', 'reopen_assigned'),
-    ('complaints.reject', 'Reject Complaints', 'complaints', 'reject'),
+    ('complaints.view_my', 'View My Complaints', 'complaints', 'view_my'),
+    ('complaints.edit', 'Edit Complaint', 'complaints', 'edit'),
+    ('complaints.assign', 'Assign Complaint', 'complaints', 'assign'),
+    ('complaints.transfer', 'Transfer Complaint', 'complaints', 'transfer'),
+    ('complaints.change_status_own', 'Change Status of Own Complaints', 'complaints', 'change_status_own'),
+    ('complaints.change_status_all', 'Change Status of Any Complaint', 'complaints', 'change_status_all'),
+    ('complaints.status_unlock', 'Access Restricted Statuses', 'complaints', 'status_unlock'),
     ('complaints.delete', 'Delete Complaints', 'complaints', 'delete'),
     # comments
     ('comments.add_internal', 'Add Internal Comment', 'comments', 'add_internal'),
@@ -84,20 +73,28 @@ PERMISSIONS = [
 
 AGENT_PERMISSIONS = [
     'dashboard.view',
-    'complaints.create', 'complaints.view_all', 'complaints.view_assigned',
-    'complaints.edit', 'complaints.edit_assigned', 'complaints.update',
-    'complaints.assign', 'complaints.reassign', 'complaints.change_status',
-    'complaints.change_status_assigned', 'complaints.resolve',
-    'complaints.resolve_assigned', 'complaints.close', 'complaints.close_assigned',
-    'complaints.reopen', 'complaints.reopen_assigned', 'complaints.reject',
+    'complaints.create', 'complaints.view_all', 'complaints.view_my',
+    'complaints.edit', 'complaints.assign', 'complaints.transfer',
+    'complaints.change_status_own', 'complaints.change_status_all',
+    'complaints.status_unlock',
     'comments.add_internal', 'comments.add_reporter_visible', 'comments.view_internal',
     'attachments.upload', 'attachments.download_all', 'attachments.delete',
     'reports.view', 'reports.export', 'users.view',
 ]
 
+SUPPORT_AGENT_PERMISSIONS = [
+    'dashboard.view',
+    'complaints.create', 'complaints.view_my',
+    'complaints.edit', 'complaints.transfer',
+    'complaints.change_status_own',
+    'comments.add_internal', 'comments.add_reporter_visible', 'comments.view_internal',
+    'attachments.upload', 'attachments.download_all',
+    'reports.view', 'reports.export', 'notifications.view',
+]
+
 USER_PERMISSIONS = [
     'dashboard.view',
-    'complaints.create', 'complaints.edit_own', 'complaints.reopen_own',
+    'complaints.create',
     'comments.add_reporter_visible',
     'attachments.upload', 'attachments.delete_own',
 ]
@@ -213,17 +210,21 @@ def main():
                           description='Full system access', is_system=True)
         admin_role.permissions.extend(permissions.values())
 
-        agent_role = Role(name='agent', display_name='Support Agent',
-                          description='Handle and resolve complaints', is_system=True)
-        agent_role.permissions.extend(permissions[p] for p in AGENT_PERMISSIONS)
+        helpdesk_role = Role(name='helpdesk_agent', display_name='Helpdesk Agent',
+                             description='Intake and manage complaints end-to-end', is_system=True)
+        helpdesk_role.permissions.extend(permissions[p] for p in AGENT_PERMISSIONS)
+
+        support_role = Role(name='support_agent', display_name='Support Agent',
+                            description='Resolve assigned complaints', is_system=True)
+        support_role.permissions.extend(permissions[p] for p in SUPPORT_AGENT_PERMISSIONS)
 
         user_role = Role(name='user', display_name='End User',
                          description='Submit and track own complaints', is_system=True)
         user_role.permissions.extend(permissions[p] for p in USER_PERMISSIONS)
 
-        db.session.add_all([admin_role, agent_role, user_role])
+        db.session.add_all([admin_role, helpdesk_role, support_role, user_role])
         db.session.flush()
-        print('Created 3 roles')
+        print('Created 4 roles')
 
         # 3. Working schedule (needed by SLA policies)
         schedule = WorkingSchedule(
@@ -339,19 +340,32 @@ def main():
         admin.roles.append(admin_role)
         db.session.add(admin)
 
-        # 12. Demo agent and end user
-        agent = User(
-            username='agent',
-            email='agent@hospital.local',
-            first_name='Support',
+        # 12. Demo helpdesk agent, support agent and end user
+        helpdesk = User(
+            username='helpdesk',
+            email='helpdesk@hospital.local',
+            first_name='Helpdesk',
             last_name='Agent',
-            employee_number='AGT001',
+            employee_number='HD001',
             department_id=departments['IT'].id,
             is_active=True,
         )
-        agent.set_password('Agent@123')
-        agent.roles.append(agent_role)
-        db.session.add(agent)
+        helpdesk.set_password('Helpdesk@123')
+        helpdesk.roles.append(helpdesk_role)
+        db.session.add(helpdesk)
+
+        support = User(
+            username='support',
+            email='support@hospital.local',
+            first_name='Support',
+            last_name='Agent',
+            employee_number='SA001',
+            department_id=departments['IT'].id,
+            is_active=True,
+        )
+        support.set_password('Support@123')
+        support.roles.append(support_role)
+        db.session.add(support)
 
         end_user = User(
             username='user',
@@ -367,7 +381,7 @@ def main():
         db.session.add(end_user)
 
         db.session.commit()
-        print('Created users: admin / Admin@123, agent / Agent@123, user / User@123')
+        print('Created users: admin / Admin@123, helpdesk / Helpdesk@123, support / Support@123, user / User@123')
 
         print('\nFinal counts:')
         table_counts()

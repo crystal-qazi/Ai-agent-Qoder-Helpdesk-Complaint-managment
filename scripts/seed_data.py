@@ -92,108 +92,166 @@ tables = {
 }
 
 for table_name, columns in tables.items():
-    # Replace AUTOINCREMENT placeholder with proper type
-    cols = columns.replace('{id_type}', 'AUTO_INCREMENT' if dialect == 'mysql' else 'INTEGER PRIMARY KEY AUTOINCREMENT')
+    # Check if this is a junction table with a composite PK and no id column
+    if '{id_type}' not in columns and 'PRIMARY KEY (' in columns:
+        # Strip the trailing PRIMARY KEY clause for cleaner SQL
+        cols = re.sub(r'\s*,?\s*PRIMARY KEY\s*\([^)]+\)\s*', '', columns).strip()
+        if dialect == 'mysql':
+            c.execute(f'CREATE TABLE IF NOT EXISTS {table_name} ({cols}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
+        else:
+            c.execute(f'CREATE TABLE IF NOT EXISTS {table_name} ({cols})')
+        continue
+
+    # Standard table: strip old id definition and rebuild
+    cols = re.sub(r'\s*id\s*\{id_type\}\s*,?\s*PRIMARY KEY\s*,?', '', columns)
+    cols = re.sub(r'\s+PRIMARY KEY\s*,?', '', cols)
+    cols = cols.strip().lstrip(', ')
     if dialect == 'mysql':
-        c.execute(f'CREATE TABLE IF NOT EXISTS {table_name} ({cols}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
+        id_col = 'id INT AUTO_INCREMENT PRIMARY KEY'
     else:
-        c.execute(f'CREATE TABLE IF NOT EXISTS {table_name} ({cols})')
+        id_col = 'id INTEGER PRIMARY KEY AUTOINCREMENT'
+    full_cols = id_col + ', ' + cols
+    # Escape MySQL reserved words used as column identifiers
+    if dialect == 'mysql':
+        for rw in ('key', 'order'):
+            full_cols = re.sub(rf'\b{rw}\b(?=[\s`,])', f'`{rw}`', full_cols)
+    if dialect == 'mysql':
+        c.execute(f'CREATE TABLE IF NOT EXISTS {table_name} ({full_cols}) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4')
+    else:
+        c.execute(f'CREATE TABLE IF NOT EXISTS {table_name} ({full_cols})')
 print('Tables created')
 
 # Seed permissions
 permissions = [
-    ('dashboard:view', 'View Dashboard', 'dashboard', 'view'),
-    ('dashboard:analytics', 'View Analytics', 'dashboard', 'analytics'),
-    ('complaints:create', 'Create Complaint', 'complaints', 'create'),
-    ('complaints:view', 'View Complaints', 'complaints', 'view'),
-    ('complaints:edit', 'Edit Complaints', 'complaints', 'edit'),
-    ('complaints:assign', 'Assign Complaints', 'complaints', 'assign'),
-    ('complaints:close', 'Close Complaints', 'complaints', 'close'),
-    ('complaints:delete', 'Delete Complaints', 'complaints', 'delete'),
-    ('users:view', 'View Users', 'users', 'view'),
-    ('users:create', 'Create Users', 'users', 'create'),
-    ('users:edit', 'Edit Users', 'users', 'edit'),
-    ('users:delete', 'Delete Users', 'users', 'delete'),
-    ('admin:view', 'View Admin Panel', 'admin', 'view'),
-    ('admin:manage_departments', 'Manage Departments', 'admin', 'manage_departments'),
-    ('admin:manage_software', 'Manage Software Catalog', 'admin', 'manage_software'),
-    ('admin:manage_categories', 'Manage Categories', 'admin', 'manage_categories'),
-    ('admin:manage_priorities', 'Manage Priorities', 'admin', 'manage_priorities'),
-    ('admin:manage_statuses', 'Manage Statuses', 'admin', 'manage_statuses'),
-    ('admin:manage_sla', 'Manage SLA Policies', 'admin', 'manage_sla'),
-    ('admin:manage_schedules', 'Manage Working Schedules', 'admin', 'manage_schedules'),
-    ('admin:manage_holidays', 'Manage Holidays', 'admin', 'manage_holidays'),
-    ('admin:manage_settings', 'Manage System Settings', 'admin', 'manage_settings'),
-    ('reports:view', 'View Reports', 'reports', 'view'),
-    ('reports:export', 'Export Reports', 'reports', 'export'),
-    ('notifications:view', 'View Notifications', 'notifications', 'view'),
+    ('dashboard.view', 'View Dashboard', 'dashboard', 'view'),
+    ('dashboard.analytics', 'View Analytics', 'dashboard', 'analytics'),
+    ('complaints.create', 'Create Complaint', 'complaints', 'create'),
+    ('complaints.view_all', 'View All Complaints', 'complaints', 'view_all'),
+    ('complaints.view_my', 'View My Complaints', 'complaints', 'view_my'),
+    ('complaints.edit', 'Edit Complaint', 'complaints', 'edit'),
+    ('complaints.assign', 'Assign Complaint', 'complaints', 'assign'),
+    ('complaints.transfer', 'Transfer Complaint', 'complaints', 'transfer'),
+    ('complaints.change_status_own', 'Change Status of Own Complaints', 'complaints', 'change_status_own'),
+    ('complaints.change_status_all', 'Change Status of Any Complaint', 'complaints', 'change_status_all'),
+    ('complaints.status_unlock', 'Access Restricted Statuses', 'complaints', 'status_unlock'),
+    ('complaints.delete', 'Delete Complaints', 'complaints', 'delete'),
+    ('users.view', 'View Users', 'users', 'view'),
+    ('users.create', 'Create Users', 'users', 'create'),
+    ('users.edit', 'Edit Users', 'users', 'edit'),
+    ('users.delete', 'Delete Users', 'users', 'delete'),
+    ('admin.view', 'View Admin Panel', 'admin', 'view'),
+    ('admin.manage_departments', 'Manage Departments', 'admin', 'manage_departments'),
+    ('admin.manage_software', 'Manage Software Catalog', 'admin', 'manage_software'),
+    ('admin.manage_categories', 'Manage Categories', 'admin', 'manage_categories'),
+    ('admin.manage_priorities', 'Manage Priorities', 'admin', 'manage_priorities'),
+    ('admin.manage_statuses', 'Manage Statuses', 'admin', 'manage_statuses'),
+    ('admin.manage_sla', 'Manage SLA Policies', 'admin', 'manage_sla'),
+    ('admin.manage_schedules', 'Manage Working Schedules', 'admin', 'manage_schedules'),
+    ('admin.manage_holidays', 'Manage Holidays', 'admin', 'manage_holidays'),
+    ('admin.manage_settings', 'Manage System Settings', 'admin', 'manage_settings'),
+    ('reports.view', 'View Reports', 'reports', 'view'),
+    ('reports.export', 'Export Reports', 'reports', 'export'),
+    ('notifications.view', 'View Notifications', 'notifications', 'view'),
+    # Comment permissions
+    ('comments.add_internal', 'Add Internal Comments', 'comments', 'add_internal'),
+    ('comments.add_reporter_visible', 'Add Reporter-Visible Comments', 'comments', 'add_reporter_visible'),
+    ('comments.view_internal', 'View Internal Comments', 'comments', 'view_internal'),
+    # Attachment permissions
+    ('attachments.upload', 'Upload Attachments', 'attachments', 'upload'),
+    ('attachments.download_all', 'Download All Attachments', 'attachments', 'download_all'),
+    ('attachments.delete', 'Delete Attachments', 'attachments', 'delete'),
+    ('attachments.delete_own', 'Delete Own Attachments', 'attachments', 'delete_own'),
+    # Admin/management permissions
+    ('users.manage', 'Manage Users', 'users', 'manage'),
+    ('roles.manage', 'Manage Roles', 'roles', 'manage'),
+    ('permissions.manage', 'Manage Permissions', 'permissions', 'manage'),
+    ('departments.manage', 'Manage Departments', 'departments', 'manage'),
+    ('software.manage', 'Manage Software', 'software', 'manage'),
+    ('categories.manage', 'Manage Categories', 'categories', 'manage'),
+    ('priorities.manage', 'Manage Priorities', 'priorities', 'manage'),
+    ('statuses.manage', 'Manage Statuses', 'statuses', 'manage'),
+    ('sla.manage', 'Manage SLA Policies', 'sla', 'manage'),
+    ('audit.view', 'View Audit Logs', 'audit', 'view'),
+    ('settings.manage', 'Manage Settings', 'settings', 'manage'),
+    ('config.manage', 'Manage Configuration', 'config', 'manage'),
 ]
+insert_sql = 'INSERT IGNORE' if dialect == 'mysql' else 'INSERT OR IGNORE'
+param_style = '%s' if dialect == 'mysql' else '?'
 for name, display, module, action in permissions:
-    c.execute('INSERT OR IGNORE INTO permissions (name, display_name, module, action) VALUES (?, ?, ?, ?)', (name, display, module, action))
+    c.execute(f'{insert_sql} INTO permissions (name, display_name, module, action) VALUES ({param_style}, {param_style}, {param_style}, {param_style})', (name, display, module, action))
 print(f'Inserted {len(permissions)} permissions')
 
 # Seed roles
+all_perms = [p[0] for p in permissions]
 roles_data = [
-    ('admin', 'Administrator', True, ['dashboard:view', 'dashboard:analytics', 'complaints:create', 'complaints:view', 'complaints:edit', 'complaints:assign', 'complaints:close', 'complaints:delete', 'users:view', 'users:create', 'users:edit', 'users:delete', 'admin:view', 'admin:manage_departments', 'admin:manage_software', 'admin:manage_categories', 'admin:manage_priorities', 'admin:manage_statuses', 'admin:manage_sla', 'admin:manage_schedules', 'admin:manage_holidays', 'admin:manage_settings', 'reports:view', 'reports:export', 'notifications:view']),
-    ('support', 'Support Agent', False, ['dashboard:view', 'complaints:create', 'complaints:view', 'complaints:edit', 'complaints:assign', 'complaints:close', 'reports:view', 'reports:export', 'notifications:view']),
-    ('user', 'End User', False, ['dashboard:view', 'complaints:create', 'complaints:view', 'notifications:view']),
+    ('admin', 'Administrator', True, all_perms),
+    ('helpdesk_agent', 'Helpdesk Agent', False, ['dashboard.view', 'dashboard.analytics', 'complaints.create', 'complaints.view_all', 'complaints.view_my', 'complaints.edit', 'complaints.assign', 'complaints.transfer', 'complaints.change_status_own', 'complaints.change_status_all', 'complaints.status_unlock', 'comments.add_internal', 'comments.add_reporter_visible', 'comments.view_internal', 'attachments.upload', 'attachments.download_all', 'reports.view', 'reports.export', 'notifications.view']),
+    ('support_agent', 'Support Agent', False, ['dashboard.view', 'dashboard.analytics', 'complaints.create', 'complaints.view_my', 'complaints.edit', 'complaints.transfer', 'complaints.change_status_own', 'comments.add_internal', 'comments.add_reporter_visible', 'comments.view_internal', 'attachments.upload', 'attachments.download_all', 'reports.view', 'reports.export', 'notifications.view']),
+    ('user', 'End User', False, ['dashboard.view', 'complaints.create', 'comments.add_reporter_visible', 'notifications.view']),
+    ('employee', 'Internal Employee', False, ['dashboard.view', 'complaints.create', 'complaints.view_my', 'notifications.view']),
 ]
 for name, display, is_system, perm_codes in roles_data:
-    c.execute('INSERT OR IGNORE INTO roles (name, display_name, is_system) VALUES (?, ?, ?)', (name, display, is_system))
-    role_id = c.execute('SELECT id FROM roles WHERE name=?', (name,)).fetchone()[0]
+    c.execute(f'{insert_sql} INTO roles (name, display_name, is_system) VALUES ({param_style}, {param_style}, {param_style})', (name, display, is_system))
+    c.execute('SELECT id FROM roles WHERE name=' + param_style, (name,))
+    role_id = c.fetchone()[0]
     for perm_code in perm_codes:
-        perm = c.execute('SELECT id FROM permissions WHERE name=?', (perm_code,)).fetchone()
+        c.execute('SELECT id FROM permissions WHERE name=' + param_style, (perm_code,))
+        perm = c.fetchone()
         if perm:
-            c.execute('INSERT OR IGNORE INTO role_permissions (role_id, permission_id) VALUES (?, ?)', (role_id, perm[0]))
+            c.execute(f'{insert_sql} INTO role_permissions (role_id, permission_id) VALUES ({param_style}, {param_style})', (role_id, perm[0]))
 print(f'Inserted {len(roles_data)} roles')
 
 # Seed admin user
-admin = c.execute("SELECT id FROM users WHERE username='admin'").fetchone()
+admin = c.execute("SELECT id FROM users WHERE username='admin'") and c.fetchone()
 if not admin:
-    c.execute("INSERT INTO users (username, email, first_name, last_name, employee_number, password_hash, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)", ('admin', 'admin@hospital.local', 'System', 'Administrator', 'ADMIN001', generate_password_hash('Admin@123')))
+    c.execute(f"INSERT INTO users (username, email, first_name, last_name, employee_number, password_hash, is_active) VALUES ({param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, 1)", ('admin', 'admin@hospital.local', 'System', 'Administrator', 'ADMIN001', generate_password_hash('Admin@123')))
     admin_id = c.lastrowid
-    role_id = c.execute("SELECT id FROM roles WHERE name='admin'").fetchone()[0]
-    c.execute("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)", (admin_id, role_id))
+    role_id = c.execute("SELECT id FROM roles WHERE name='admin'") and c.fetchone()[0]
+    c.execute(f"INSERT INTO user_roles (user_id, role_id) VALUES ({param_style}, {param_style})", (admin_id, role_id))
     print(f'Created admin user (ID: {admin_id})')
 else:
     print('Admin user already exists')
 
 # Seed statuses
 statuses = [
-    ('New', 'new', '#3b82f6', 1, 1, 0, 'Initial status', 1, 0, 0),
-    ('Assigned', 'assigned', '#8b5cf6', 2, 1, 0, 'Assigned', 1, 0, 1),
-    ('In Progress', 'in_progress', '#f59e0b', 3, 1, 0, 'Work in progress', 1, 0, 1),
-    ('Pending Info', 'pending_info', '#f97316', 4, 1, 0, 'Waiting for info', 1, 1, 1),
-    ('On Hold', 'on_hold', '#6b7280', 5, 1, 0, 'Paused', 1, 0, 1),
-    ('Resolved', 'resolved', '#10b981', 6, 1, 1, 'Resolved', 0, 1, 1),
-    ('Closed', 'closed', '#6b7280', 7, 1, 1, 'Closed', 0, 0, 0),
-    ('Reopened', 'reopened', '#ef4444', 8, 1, 0, 'Reopened', 1, 0, 1),
-    ('Rejected', 'rejected', '#dc2626', 9, 1, 1, 'Rejected', 0, 0, 0),
+    ('New',         'new',        '#3b82f6', 1, 1, 0, 0, 1, 'intake',   None, 'Initial complaint'),
+    ('Assigned',    'assigned',   '#8b5cf6', 2, 1, 0, 0, 0, 'processing', None, 'Waiting for work'),
+    ('In Progress', 'in_progress','#f59e0b', 3, 1, 0, 0, 0, 'processing', None, 'Work underway'),
+    ('Pending Info','pending_info','#f97316', 4, 1, 0, 0, 0, 'processing', None, 'Awaiting response'),
+    ('On Hold',     'on_hold',    '#6b7280', 5, 1, 0, 0, 0, 'processing', None, 'Temporarily paused'),
+    ('Resolved',    'resolved',   '#10b981', 6, 1, 0, 1, 1, 'resolution', None, 'Issue resolved'),
+    ('Closed',      'closed',     '#6b7280', 7, 1, 1, 0, 0, 'resolution', None, 'Formally closed'),
+    ('Reopened',    'reopened',   '#ef4444', 8, 0, 0, 0, 0, 'processing', None, 'Reopened after close'),
+    ('Rejected',    'rejected',   '#dc2626', 9, 1, 0, 1, 0, 'resolution', None, 'Request rejected'),
 ]
-for name, code, color, order, terminal, active, desc, notify, require_res, allow_reopen in statuses:
-    c.execute('INSERT OR IGNORE INTO statuses (name, code, color, display_order, is_terminal, is_active, description, notify_assigned, require_resolution_summary, allow_reopen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (name, code, color, order, terminal, active, desc, notify, require_res, allow_reopen))
+for name, code, color, order, terminal, active, requires_reason, requires_resolution, category, icon, desc in statuses:
+    c.execute(f'{insert_sql} INTO statuses (name, code, color, sort_order, is_terminal, is_active, requires_reason, requires_resolution, category, icon, description) VALUES ({param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style})', (name, code, color, order, terminal, active, requires_reason, requires_resolution, category, icon, desc))
 print(f'Inserted {len(statuses)} statuses')
 
 # Seed priorities
 priorities = [
     ('Critical', 'CRITICAL', '#ef4444', 1, 1, 4, 2, 1, 1),
-    ('High', 'HIGH', '#f97316', 2, 4, 24, 8, 1, 1),
-    ('Medium', 'MEDIUM', '#3b82f6', 3, 24, 72, 24, 0, 0),
-    ('Low', 'LOW', '#6b7280', 4, 72, 168, 48, 0, 0),
+    ('High',     'HIGH',     '#f97316', 2, 4, 24, 8, 1, 1),
+    ('Medium',   'MEDIUM',   '#3b82f6', 3, 24, 72, 24, 0, 0),
+    ('Low',      'LOW',      '#6b7280', 4, 72, 168, 48, 0, 0),
 ]
 for name, code, color, level, resp, res, esc, notify, breach in priorities:
-    c.execute('INSERT OR IGNORE INTO priorities (name, code, color, level, sla_response_hours, sla_resolution_hours, escalation_hours, notify_assigned, notify_on_breach, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)', (name, code, color, level, resp, res, esc, notify, breach))
+    c.execute(f'{insert_sql} INTO priorities (name, code, color, level, sla_response_hours, sla_resolution_hours, escalation_hours, notify_assigned, notify_on_breach, sort_order, is_active) VALUES ({param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, {param_style}, 1)', (name, code, color, level, resp, res, esc, notify, breach, level))
 print(f'Inserted {len(priorities)} priorities')
 
 # Seed departments
-depts = [('IT Helpdesk', 'ITH'), ('Network Operations', 'NET'), ('Clinical Systems', 'CLI'), ('Patient Administration', 'PAT'), ('Billing', 'BIL')]
-for name, code in depts:
-    c.execute('INSERT OR IGNORE INTO departments (name, code, is_active) VALUES (?, ?, 1)', (name, code))
+depts = [('IT Helpdesk',  'ITH',  'IT support desk'),
+         ('Network Operations', 'NET', 'Network infrastructure'),
+         ('Clinical Systems', 'CLI', 'Clinical system support'),
+         ('Patient Administration', 'PAT', 'Patient records admin'),
+         ('Billing', 'BIL', 'Billing department')]
+for i, (name, code, desc) in enumerate(depts, 1):
+    c.execute(f'{insert_sql} INTO departments (name, code, description, sort_order, is_active) VALUES ({param_style}, {param_style}, {param_style}, {param_style}, 1)', (name, code, desc, i))
 print(f'Inserted {len(depts)} departments')
 
 # Seed working schedule
 weekly = {'monday': {'start': '09:00', 'end': '17:00'}, 'tuesday': {'start': '09:00', 'end': '17:00'}, 'wednesday': {'start': '09:00', 'end': '17:00'}, 'thursday': {'start': '09:00', 'end': '17:00'}, 'friday': {'start': '09:00', 'end': '17:00'}, 'saturday': None, 'sunday': None}
-c.execute('INSERT OR IGNORE INTO working_schedules (name, timezone, weekly_schedule, is_default, is_active) VALUES (?, ?, ?, ?, 1)', ('Standard Business Hours', 'UTC', json.dumps(weekly), 1))
+c.execute(f'{insert_sql} INTO working_schedules (name, timezone, weekly_schedule, is_default, is_active) VALUES ({param_style}, {param_style}, {param_style}, {param_style}, 1)', ('Standard Business Hours', 'UTC', json.dumps(weekly), 1))
 print('Inserted working schedule')
 
 conn.commit()

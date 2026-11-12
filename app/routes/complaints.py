@@ -14,8 +14,7 @@ from app.validators.complaint import validate_complaint_data, validate_status_tr
 from app.validators.file import validate_file_upload, generate_stored_filename, sanitize_filename
 from app.permissions.decorators import (
     can_view_complaint, can_edit_complaint, can_assign_complaint,
-    can_resolve_complaint, can_close_complaint, can_reopen_complaint,
-    can_view_all_complaints
+    can_change_status_complaint, can_view_all_complaints
 )
 from app.permissions.policy import PermissionPolicy
 from app.services.complaint import ComplaintService
@@ -287,17 +286,21 @@ def assign_complaint(complaint_id):
 def change_status(complaint_id):
     """Change complaint status."""
     complaint = Complaint.query.get_or_404(complaint_id)
-    
+
+    # Basic access check — detailed permission is validated inside the service
+    if not current_user.has_permission('complaints.change_status_own') and not current_user.has_permission('complaints.change_status_all'):
+        abort(403)
+
     data = request.form.to_dict()
     new_status_id = int(data['status_id']) if data.get('status_id') else None
-    
+
     if not new_status_id:
         flash('Status is required.', 'danger')
         return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
-    
+
     errors = validate_status_transition(complaint, new_status_id, current_user,
                                         data.get('resolution_summary'))
-    
+
     if not errors:
         success, message = ComplaintService.change_status(
             complaint,
@@ -313,7 +316,7 @@ def change_status(complaint_id):
     else:
         for field, error in errors.items():
             flash(error, 'danger')
-    
+
     return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
 
 
