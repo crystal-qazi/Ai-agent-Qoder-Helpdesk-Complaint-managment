@@ -374,66 +374,62 @@ class TestInactiveRolePermissionFiltering(unittest.TestCase):
 
 
 class TestPrivilegeEscalationPrevention(unittest.TestCase):
-    """Verifies the user routes block non-admins from assigning admin roles."""
+    """Verifies the user routes block non-admins from assigning admin roles
+    via the centralized AdminProtectionService."""
 
     def _read_users_route_source(self):
         path = os.path.join(_PROJECT_ROOT, 'app', 'routes', 'users.py')
         with open(path) as f:
             return f.read()
 
-    def test_create_user_has_privilege_check(self):
-        """create_user route must check for admin role assignment."""
-        src = self._read_users_route_source()
-        start = src.index("def create_user")
-        end = src.index("@users_bp.route('/<int:user_id>')", start)
-        method_src = src[start:end]
-        self.assertIn("has_admin_role", method_src,
-                      "create_user must check if admin role is being assigned")
+    def _read_admin_protection_source(self):
+        path = os.path.join(_PROJECT_ROOT, 'app', 'services', 'admin_protection.py')
+        with open(path) as f:
+            return f.read()
 
-    def test_edit_user_has_privilege_check(self):
-        """edit_user route must check for admin role assignment."""
+    def test_routes_use_protection_service(self):
+        """create_user and edit_user must call AdminProtectionService.can_assign_roles."""
         src = self._read_users_route_source()
-        start = src.index("def edit_user")
-        end = src.index("@users_bp.route('/<int:user_id>/delete'", start)
-        method_src = src[start:end]
-        self.assertIn("has_admin_role", method_src,
-                      "edit_user must check if admin role is being assigned")
+        self.assertIn("AdminProtectionService.can_assign_roles", src,
+                       "routes must use the centralized role-assignment validation")
+
+    def test_service_blocks_privileged_escalation(self):
+        """The protection service must block a non-admin from granting the admin role."""
+        src = self._read_admin_protection_source()
+        self.assertIn("privileged_role_escalation_blocked", src,
+                      "service must audit-log blocked privileged role assignment")
+        self.assertIn("actor_user.has_role(ADMIN_ROLE_NAME)", src,
+                      "service must require the actor to hold the admin role")
 
 
 class TestLastAdminProtection(unittest.TestCase):
-    """Verifies last-admin deactivation and deletion protections exist."""
+    """Verifies last-admin deactivation and deletion protections are centralized."""
 
     def _read_users_route_source(self):
         path = os.path.join(_PROJECT_ROOT, 'app', 'routes', 'users.py')
         with open(path) as f:
             return f.read()
 
-    def test_delete_user_protects_last_admin(self):
-        """delete_user must check for last active admin."""
-        src = self._read_users_route_source()
-        start = src.index("def delete_user")
-        end = src.index("@users_bp.route('/<int:user_id>/unlock'", start)
-        method_src = src[start:end]
-        self.assertIn("other_active_admins", method_src,
-                      "delete_user must count other active admins before deactivating")
+    def _read_admin_protection_source(self):
+        path = os.path.join(_PROJECT_ROOT, 'app', 'services', 'admin_protection.py')
+        with open(path) as f:
+            return f.read()
 
-    def test_edit_user_protects_last_admin(self):
-        """edit_user must prevent deactivating the last active admin."""
+    def test_routes_use_protection_service(self):
         src = self._read_users_route_source()
-        start = src.index("def edit_user")
-        end = src.index("@users_bp.route('/<int:user_id>/delete'", start)
-        method_src = src[start:end]
-        self.assertIn("other_active_admins", method_src,
-                      "edit_user must protect the last active admin from deactivation")
+        self.assertIn("AdminProtectionService.can_deactivate_user", src,
+                      "delete_user/edit_user must use the centralized deactivation guard")
+        self.assertIn("AdminProtectionService.can_deactivate_admin_role", src,
+                      "toggle_role must use the centralized admin-role guard")
 
-    def test_toggle_role_protects_last_admin(self):
-        """toggle_role must prevent deactivating the admin role if it's the last one."""
-        src = self._read_users_route_source()
-        start = src.index("def toggle_role")
-        end = src.index("@users_bp.route('/permissions')", start)
-        method_src = src[start:end]
-        self.assertIn("active_admins", method_src,
-                      "toggle_role must check active admin count before deactivating admin role")
+    def test_service_has_last_admin_guards(self):
+        src = self._read_admin_protection_source()
+        self.assertIn("last_active_admin_deactivation_blocked", src,
+                      "service must block deactivating the last active admin")
+        self.assertIn("last_active_admin_role_removal_blocked", src,
+                      "service must block removing the last admin's admin role")
+        self.assertIn("admin_role_deactivation_blocked_in_use", src,
+                      "service must block deactivating the admin role while in use")
 
 
 class TestRoleDuplicateRejection(unittest.TestCase):

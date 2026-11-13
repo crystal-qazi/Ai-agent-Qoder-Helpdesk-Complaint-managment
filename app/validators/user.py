@@ -69,15 +69,19 @@ def validate_user_data(data, user_id=None):
         if not re.match(r'^\d{3,5}$', ext):
             errors['extension'] = 'Extension must be 3-5 digits.'
     
-    # Role validation
-    if data.get('role_ids'):
-        role_ids = data['role_ids']
+    # Role validation. ``role_ids`` may arrive as a single string from the
+    # form (or be absent); normalize it to a list of role ids before
+    # checking that every one of them is an active role.
+    role_ids = data.get('role_ids')
+    if role_ids and isinstance(role_ids, str):
+        role_ids = [role_ids]
+    if role_ids:
         if not isinstance(role_ids, list):
             errors['role_ids'] = 'Roles must be a list.'
         else:
             valid_roles = Role.query.filter(Role.id.in_(role_ids), Role.is_active == True).count()
             if valid_roles != len(role_ids):
-                errors['role_ids'] = 'One or more roles are invalid or inactive.'
+                errors['role_ids'] = 'One or more selected roles do not exist or are inactive.'
     
     # Department validation
     if data.get('department_id'):

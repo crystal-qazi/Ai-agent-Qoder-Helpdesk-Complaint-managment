@@ -7,6 +7,7 @@ from app.models import User, Role, Department, UserProfile
 from app.validators.user import validate_user_data, validate_password_strength
 from app.permissions.decorators import can_manage_users, can_manage_roles
 from app.services.audit import AuditService
+from app.services.admin_protection import AdminProtectionService
 
 
 users_bp = Blueprint('users', __name__, url_prefix='/users')
@@ -61,23 +62,30 @@ def create_user():
         data['is_active'] = 'is_active' in data
         data['must_change_password'] = 'must_change_password' in data
         
-        # Convert role_ids
-        role_ids = request.form.getlist('role_ids')
-        data['role_ids'] = [int(r) for r in role_ids if r.isdigit()]
+        # Convert role_ids. We keep the raw list for validation; malformed
+        # values are rejected by AdminProtectionService.can_assign_roles,
+        # which also blocks privileged role escalation.
+        raw_role_ids = request.form.getlist('role_ids')
         
         # Convert department_id
         if data.get('department_id'):
             data['department_id'] = int(data['department_id'])
         
+        # Centralized role-assignment validation (malformed / unknown /
+        # inactive / privileged-escalation). Runs before we touch the
+        # database, and it is what actually rejects a bad role submission.
+        assignment_check = AdminProtectionService.can_assign_roles(
+            current_user, raw_role_ids, target_user_id=None,
+        )
+
         errors = validate_user_data(data)
-        
-        # Privilege escalation check: prevent non-admin from assigning admin role
-        if data['role_ids'] and not errors.get('role_ids'):
-            requested_roles = Role.query.filter(Role.id.in_(data['role_ids'])).all()
-            has_admin_role = any(r.name == 'admin' for r in requested_roles)
-            if has_admin_role and not current_user.has_role('admin'):
-                flash('You do not have permission to assign the administrator role.', 'danger')
-                errors['role_ids'] = 'Privilege escalation blocked'
+        # The role-assignment result is authoritative; it supersedes the
+        # generic role error that validate_user_data may have produced.
+        if not assignment_check.ok:
+            errors['role_ids'] = assignment_check.reason
+        else:
+            data['role_ids'] = [int(r) for r in raw_role_ids if r.isdigit()]
+            errors.pop('role_ids', None)
         
         if not errors:
             try:
@@ -98,7 +106,6 @@ def create_user():
                 if data.get('password'):
                     user.set_password(data['password'])
                 else:
-                    # Generate temporary password
                     import secrets
                     temp_password = secrets.token_urlsafe(12)
                     user.set_password(temp_password)
@@ -107,7 +114,8 @@ def create_user():
                 db.session.add(user)
                 db.session.flush()
                 
-                # Assign roles
+                # Assign roles (only active, validated IDs — the assignment
+                # check above already rejected anything else)
                 if data['role_ids']:
                     roles = Role.query.filter(Role.id.in_(data['role_ids'])).all()
                     user.roles = roles
@@ -133,11 +141,10 @@ def create_user():
                 flash(f'Error creating user: {str(e)}', 'danger')
         else:
             for field, error in errors.items():
-                if error != 'Privilege escalation blocked':
-                    flash(error, 'danger')
+                flash(error, 'danger')
     
     # Get form data
-    roles = Role.query.filter_by(is_active=True).order_by(Role.name).all()
+    roles = Role.query.filter_by(is_active=True).order_by(Role.display_name).all()
     departments = Department.query.filter_by(is_active=True).order_by(Department.name).all()
     
     return render_template('users/create.html', roles=roles, departments=departments)
@@ -178,44 +185,44 @@ def edit_user(user_id):
         data['is_active'] = 'is_active' in data
         data['must_change_password'] = 'must_change_password' in data
         
-        # Convert role_ids
-        role_ids = request.form.getlist('role_ids')
-        data['role_ids'] = [int(r) for r in role_ids if r.isdigit()]
+        # Convert role_ids. Raw values validated by AdminProtectionService
+        # before any database writes.
+        raw_role_ids = request.form.getlist('role_ids')
         
         # Convert department_id
         if data.get('department_id'):
             data['department_id'] = int(data['department_id'])
         
         errors = validate_user_data(data, user_id)
+
+        # Centralized admin protection
+        deactivation_check = AdminProtectionService.can_deactivate_user(
+            user, current_user,
+        )
+
+        role_assignment_check = AdminProtectionService.can_assign_roles(
+            current_user, raw_role_ids, target_user_id=user.id,
+        )
+
+        self_removal_check = AdminProtectionService.can_remove_admin_role_from(
+            user, raw_role_ids, current_user,
+        )
+
+        # Fold results into the error dict; role checks are authoritative and
+        # supersede the generic role error from validate_user_data.
+        if not deactivation_check.ok:
+            errors['is_active'] = deactivation_check.reason
+        if not self_removal_check.ok:
+            errors['role_ids'] = self_removal_check.reason
+        elif not role_assignment_check.ok:
+            errors['role_ids'] = role_assignment_check.reason
+        else:
+            data['role_ids'] = [int(r) for r in raw_role_ids if r.isdigit()]
+            errors.pop('role_ids', None)
         
-        # Last-admin protection: prevent deactivating the last active admin
-        if user.has_role('admin') and not data['is_active']:
-            other_active_admins = User.query.join(User.roles).filter(
-                Role.name == 'admin',
-                User.is_active == True,
-                User.id != user.id,
-            ).count()
-            if other_active_admins == 0:
-                flash('Cannot deactivate the last active administrator.', 'danger')
-                errors['is_active'] = 'Last admin protection'
-
-        # Self-protection: prevent an admin from removing their own admin role
-        if user.id == current_user.id and not data['role_ids']:
-            current_user_has_admin = current_user.has_role('admin')
-            if current_user_has_admin:
-                flash('You cannot remove your own administrator role.', 'danger')
-                errors['role_ids'] = 'Cannot remove your own admin access'
-
-        # Privilege escalation check: prevent non-admin from assigning admin role
-        if data['role_ids']:
-            from app.models import Role as R
-            requested_roles = R.query.filter(R.id.in_(data['role_ids'])).all()
-            has_admin_role = any(r.name == 'admin' for r in requested_roles)
-            if has_admin_role and not current_user.has_role('admin'):
-                flash('You do not have permission to assign the administrator role.', 'danger')
-                errors['role_ids'] = 'Privilege escalation blocked'
-
         if not errors:
+            normalized_role_ids = [int(r) for r in raw_role_ids if r.isdigit()]
+            data['role_ids'] = normalized_role_ids
             try:
                 old_data = {
                     'username': user.username,
@@ -242,9 +249,9 @@ def edit_user(user_id):
                 user.is_active = data.get('is_active', True)
                 user.must_change_password = data.get('must_change_password', False)
                 
-                # Update roles
-                if data['role_ids']:
-                    roles = Role.query.filter(Role.id.in_(data['role_ids'])).all()
+                # Update roles (validated set only)
+                if normalized_role_ids:
+                    roles = Role.query.filter(Role.id.in_(normalized_role_ids)).all()
                     user.roles = roles
                 else:
                     user.roles = []
@@ -279,11 +286,11 @@ def edit_user(user_id):
                 flash(f'Error updating user: {str(e)}', 'danger')
         else:
             for field, error in errors.items():
-                if error not in ('Last admin protection', 'Cannot remove your own admin access', 'Privilege escalation blocked'):
-                    flash(error, 'danger')
+                flash(error, 'danger')
     
-    # Get form data
-    roles = Role.query.filter_by(is_active=True).order_by(Role.name).all()
+    # Get form data — active roles only; user's currently-assigned inactive
+    # roles are surfaced as a warning in the template.
+    roles = Role.query.filter_by(is_active=True).order_by(Role.display_name).all()
     departments = Department.query.filter_by(is_active=True).order_by(Department.name).all()
     user_roles = [r.id for r in user.roles]
     
@@ -305,16 +312,11 @@ def delete_user(user_id):
         flash('You cannot delete your own account.', 'danger')
         return redirect(url_for('users.view_user', user_id=user.id))
     
-    # Last-admin protection
-    if user.has_role('admin'):
-        other_active_admins = User.query.join(User.roles).filter(
-            Role.name == 'admin',
-            User.is_active == True,
-            User.id != user.id,
-        ).count()
-        if other_active_admins == 0:
-            flash('Cannot deactivate the last active administrator.', 'danger')
-            return redirect(url_for('users.view_user', user_id=user.id))
+    # Centralized last-admin protection
+    check = AdminProtectionService.can_deactivate_user(user, current_user)
+    if not check.ok:
+        flash(check.reason, 'danger')
+        return redirect(url_for('users.view_user', user_id=user.id))
     
     # Soft delete
     user.is_active = False
@@ -561,15 +563,13 @@ def toggle_role(role_id):
     role = Role.query.get_or_404(role_id)
     new_state = not role.is_active
 
-    # Protect the last active admin: block deactivation of the 'admin' role
-    # if no active users hold that role.
+    # When deactivating the admin role, ensure active admins still hold it
+    # through at least one OTHER active role or there must be a safe
+    # replacement process. The protection service enforces this.
     if not new_state and role.name == 'admin':
-        active_admins = User.query.join(User.roles).filter(
-            Role.name == 'admin',
-            User.is_active == True,
-        ).count()
-        if active_admins == 0:
-            flash('Cannot deactivate the Administrator role: no active administrators remain.', 'danger')
+        check = AdminProtectionService.can_deactivate_admin_role(current_user)
+        if not check.ok:
+            flash(check.reason, 'danger')
             return redirect(url_for('users.list_roles'))
 
     role.is_active = new_state
