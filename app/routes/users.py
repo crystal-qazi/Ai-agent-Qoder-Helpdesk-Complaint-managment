@@ -198,7 +198,7 @@ def edit_user(user_id):
         # Centralized admin protection
         deactivation_check = AdminProtectionService.can_deactivate_user(
             user, current_user,
-        )
+        ) if user.is_active else ProtectionCheck.allow()
 
         role_assignment_check = AdminProtectionService.can_assign_roles(
             current_user, raw_role_ids, target_user_id=user.id,

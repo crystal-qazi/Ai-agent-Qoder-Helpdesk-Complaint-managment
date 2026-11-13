@@ -11,6 +11,7 @@ bcrypt==4.1.2
 ReportLab==4.2.2
 Chart.js==4.4.3
 WTForms==3.1.1
+pytest==8.3.2
 email-validator==2.1.0
 Pillow==10.3.0
 waitress==3.0.2
