@@ -21,6 +21,9 @@ The test database name may be overridden with the ``TEST_DB_NAME`` env var.
 import os
 import re
 import unittest
+import re
+
+from sqlalchemy.engine import make_url, URL
 
 import pymysql
 from dotenv import load_dotenv
@@ -32,44 +35,81 @@ _TEST_DB_NAME = os.environ.get('TEST_DB_NAME', 'helpdesk_qoder_test')
 
 
 def _server_config():
-    """Extract host/port/user/password from DATABASE_URL or DB_* vars."""
-    url = os.environ.get('DATABASE_URL')
-    if url:
-        rest = url.split('://', 1)[1] if '://' in url else url
-        cred, _, hostportdb = rest.partition('@')
-        user, _, pwd = cred.partition(':')
-        hostport, _, _dbname = hostportdb.partition('/')
-        host, _, port = hostport.partition(':')
+    """Parse the configured application DB URL without lossy string splitting."""
+    raw_url = os.environ.get('DATABASE_URL')
+    if raw_url:
+        parsed = make_url(raw_url)
+        if not parsed.drivername.startswith('mysql'):
+            raise RuntimeError('MySQL integration tests require a MySQL DATABASE_URL.')
         return {
-            'host': host or 'localhost',
-            'port': int(port) if port else 3306,
-            'user': user,
-            'password': pwd,
+            'host': parsed.host or 'localhost',
+            'port': parsed.port or 3306,
+            'user': parsed.username,
+            'password': parsed.password or '',
+            'database': parsed.database,
         }
     return {
         'host': os.environ.get('DB_HOST', 'localhost'),
         'port': int(os.environ.get('DB_PORT', '3306')),
         'user': os.environ.get('DB_USER', 'root'),
         'password': os.environ.get('DB_PASSWORD', ''),
+        'database': os.environ.get('DB_NAME'),
     }
 
 
 def _test_database_url(server: dict) -> str:
-    return (f"mysql+pymysql://{server['user']}:{server['password']}"
-            f"@{server['host']}:{server['port']}/{_TEST_DB_NAME}")
+    return URL.create(
+        drivername='mysql+pymysql',
+        username=server['user'],
+        password=server['password'],
+        host=server['host'],
+        port=server['port'],
+        database=_TEST_DB_NAME,
+    ).render_as_string(hide_password=False)
+
+
+def _validate_test_database_target(server: dict):
+    """Fail closed unless this is a distinct, explicitly test-named schema."""
+    if not re.fullmatch(r'helpdesk_[a-z0-9_]*_test', _TEST_DB_NAME):
+        raise RuntimeError(
+            'TEST_DB_NAME must match helpdesk_<identifier>_test; refusing '
+            'to run destructive or schema-changing integration setup.'
+        )
+    app_db = server.get('database')
+    if not app_db:
+        raise RuntimeError(
+            'Cannot establish the configured application database identity; '
+            'set DATABASE_URL or DB_NAME before running integration tests.'
+        )
+    if app_db.casefold() == _TEST_DB_NAME.casefold():
+        raise RuntimeError(
+            'The test database is the configured application database. '
+            'Refusing to run integration tests.'
+        )
 
 
 def _ensure_test_db(server: dict):
-    """Create the test database fresh (dropping any previous run's copy)."""
+    """Create a new dedicated schema; never drop or overwrite an existing DB."""
+    _validate_test_database_target(server)
     conn = pymysql.connect(
         host=server['host'], port=server['port'],
         user=server['user'], password=server['password'],
     )
     try:
         cur = conn.cursor()
-        cur.execute(f"DROP DATABASE IF EXISTS `{_TEST_DB_NAME}`")
-        cur.execute(f"CREATE DATABASE `{_TEST_DB_NAME}` "
-                    f"CHARACTER SET utf8mb4")
+        cur.execute(
+            "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA "
+            "WHERE SCHEMA_NAME = %s", (_TEST_DB_NAME,)
+        )
+        if cur.fetchone():
+            raise RuntimeError(
+                f'Test database {_TEST_DB_NAME!r} already exists. '
+                'Refusing to erase or reuse it; provision a fresh dedicated '
+                'test schema and rerun.'
+            )
+        cur.execute(
+            f"CREATE DATABASE `{_TEST_DB_NAME}` CHARACTER SET utf8mb4"
+        )
         conn.commit()
     finally:
         conn.close()
@@ -108,10 +148,11 @@ class RBACIntegrationTestBase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        server = _server_config()
+        _validate_test_database_target(server)
+        _ensure_test_db(server)
         if cls._app is None:
             cls._build_app_once()
-        # Recreate the test database fresh for this class's tests.
-        _ensure_test_db(_server_config())
         with cls._app.app_context():
             from app.extensions import db
             db.create_all()
@@ -119,19 +160,12 @@ class RBACIntegrationTestBase(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # Best-effort cleanup of the test database (production is untouched).
-        try:
-            server = _server_config()
-            conn = pymysql.connect(
-                host=server['host'], port=server['port'],
-                user=server['user'], password=server['password'],
-            )
-            cur = conn.cursor()
-            cur.execute(f"DROP DATABASE IF EXISTS `{_TEST_DB_NAME}`")
-            conn.commit()
-            conn.close()
-        except Exception as exc:  # pragma: no cover - cleanup is best effort
-            print(f"warning: could not drop test DB: {exc}")
+        # Deliberately retain the isolated test schema. Automatic teardown
+        # must never issue DROP DATABASE, even for a test-named database.
+        if cls._app is not None:
+            with cls._app.app_context():
+                from app.extensions import db
+                db.session.remove()
 
     @classmethod
     def _seed(cls):

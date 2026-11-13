@@ -17,7 +17,9 @@ from typing import Optional
 
 from app.extensions import db
 from app.models import User, Role
-from app.services.audit import AuditService
+from app.models import AuditLog
+from sqlalchemy.orm import sessionmaker
+from flask import request
 
 # The role name that is treated as the "privileged" administrator role.
 # This is a system-level concept (seeded as ``is_system=True``); see the
@@ -48,50 +50,49 @@ class AdminProtectionService:
     # ------------------------------------------------------------------
     # Audit persistence
     # ------------------------------------------------------------------
-    @staticmethod
-    def _persist_audit(record) -> None:
-        """Durably persist a security audit record.
-
-        ``AuditService.log_action`` only stages the row on the session; if
-        the surrounding route re-renders without committing (which is the
-        normal path for a validation failure) and then Flask tears the
-        session down, the pending row is rolled back and the security
-        event is lost.
-
-        To keep the audit log reliable we start a *nested* commit:
-          1. Begin the audit record on the current session.
-          2. Commit just that record so the row is durable.
-          3. Begin a new session transaction, so any subsequent route work
-             starts from a clean slate.
-
-        We do not commit the caller's in-progress entity changes.
-        """
-        try:
-            db.session.flush()
-            db.session.commit()
-        except Exception:
-            # A rollback here is fine: the audit row was already flushed to
-            # the database, so its persistence is now independent of the
-            # caller's session state.
-            db.session.rollback()
-
     @classmethod
     def _log_blocked(cls, user_id, action, entity_type, entity_id, **kw):
-        """Stage a security audit record and durably persist it.
+        """Persist a rejected security event in an independent transaction.
 
-        The record is committed immediately so that a subsequent rollback
-        in the route (which is the normal path when a validation check
-        fails) does not lose the security event.
+        This deliberately does not use db.session: committing or flushing the
+        request-scoped session here could commit unrelated application writes.
         """
-        record = AuditService.log_action(
+        req = request._get_current_object() if request else None
+        ip = None
+        user_agent = None
+        session_id = None
+        request_id = None
+        if req is not None:
+            forwarded = req.headers.get('X-Forwarded-For', '')
+            ip = req.remote_addr or (forwarded.split(',')[0].strip() if forwarded else None)
+            user_agent = req.headers.get('User-Agent')
+            session_id = (req.cookies.get('session') or '')[:255] or None
+            request_id = req.headers.get('X-Request-ID')
+
+        values = dict(
             user_id=user_id,
             action=action,
             entity_type=entity_type,
             entity_id=entity_id,
+            ip_address=ip,
+            user_agent=user_agent,
+            session_id=session_id,
+            request_id=request_id,
             success=False,
-            **kw,
         )
-        cls._persist_audit(record)
+        allowed = {
+            'entity_repr', 'old_values', 'new_values', 'changed_fields',
+            'error_message', 'severity', 'category'
+        }
+        values.update({key: value for key, value in kw.items() if key in allowed})
+
+        # A new Session owns its transaction and cannot commit the caller's
+        # pending ORM changes. Propagate errors so callers cannot mistake a
+        # failed security audit write for a successful one.
+        AuditSession = sessionmaker(bind=db.engine, expire_on_commit=False)
+        with AuditSession.begin() as audit_session:
+            record = AuditLog(**values)
+            audit_session.add(record)
         return record
 
     # ------------------------------------------------------------------
@@ -283,12 +284,11 @@ class AdminProtectionService:
                     'The submitted role selection contains a value that is not a valid role ID.',
                     f'malformed_role_id_submitted:{raw}',
                 )
-                AuditService.log_action(
+                cls._log_blocked(
                     user_id=actor_user.id,
                     action='blocked_role_assignment',
                     entity_type='user',
                     entity_id=target_user_id,
-                    success=False,
                     error_message=check.audit_reason,
                     severity='warning',
                     category='security',
@@ -310,13 +310,12 @@ class AdminProtectionService:
                     'One or more selected roles do not exist.',
                     f'unknown_role_ids:{sorted(missing)}',
                 )
-                AuditService.log_action(
+                cls._log_blocked(
                     user_id=actor_user.id,
                     action='blocked_role_assignment',
                     entity_type='user',
                     entity_id=target_user_id,
                     new_values={'unknown_role_ids': sorted(missing)},
-                    success=False,
                     error_message=check.audit_reason,
                     severity='warning',
                     category='security',
@@ -330,14 +329,13 @@ class AdminProtectionService:
                     'Cannot assign inactive role(s): ' + ', '.join(inactive_names),
                     f'inactive_role_ids:{sorted(inactive)}',
                 )
-                AuditService.log_action(
+                cls._log_blocked(
                     user_id=actor_user.id,
                     action='blocked_role_assignment',
                     entity_type='user',
                     entity_id=target_user_id,
                     new_values={'inactive_role_ids': sorted(inactive),
                                 'inactive_role_names': inactive_names},
-                    success=False,
                     error_message=check.audit_reason,
                     severity='warning',
                     category='security',
@@ -351,13 +349,12 @@ class AdminProtectionService:
                 'You do not have permission to assign the administrator role.',
                 'privileged_role_escalation_blocked',
             )
-            AuditService.log_action(
+            cls._log_blocked(
                 user_id=actor_user.id,
                 action='blocked_role_assignment',
                 entity_type='user',
                 entity_id=target_user_id,
                 new_values={'attempted_role': ADMIN_ROLE_NAME},
-                success=False,
                 error_message=check.audit_reason,
                 severity='warning',
                 category='security',

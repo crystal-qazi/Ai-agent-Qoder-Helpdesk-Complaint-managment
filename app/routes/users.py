@@ -7,7 +7,7 @@ from app.models import User, Role, Department, UserProfile
 from app.validators.user import validate_user_data, validate_password_strength
 from app.permissions.decorators import can_manage_users, can_manage_roles
 from app.services.audit import AuditService
-from app.services.admin_protection import AdminProtectionService
+from app.services.admin_protection import AdminProtectionService, ProtectionCheck
 
 
 users_bp = Blueprint('users', __name__, url_prefix='/users')
@@ -196,9 +196,13 @@ def edit_user(user_id):
         errors = validate_user_data(data, user_id)
 
         # Centralized admin protection
-        deactivation_check = AdminProtectionService.can_deactivate_user(
-            user, current_user,
-        ) if user.is_active else ProtectionCheck.allow()
+        # Only run the last-admin guard when this POST actually changes an
+        # active account to inactive. Ordinary profile edits must not be blocked.
+        deactivation_check = (
+            AdminProtectionService.can_deactivate_user(user, current_user)
+            if user.is_active and not data['is_active']
+            else ProtectionCheck.allow()
+        )
 
         role_assignment_check = AdminProtectionService.can_assign_roles(
             current_user, raw_role_ids, target_user_id=user.id,
