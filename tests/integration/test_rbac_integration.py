@@ -21,7 +21,6 @@ The test database name may be overridden with the ``TEST_DB_NAME`` env var.
 import os
 import re
 import unittest
-import re
 
 from sqlalchemy.engine import make_url, URL
 
@@ -90,7 +89,7 @@ def _validate_test_database_target(server: dict):
 
 
 def _ensure_test_db(server: dict):
-    """Create a new dedicated schema; never drop or overwrite an existing DB."""
+    """Create the validated test schema if absent; never drop the database."""
     _validate_test_database_target(server)
     conn = pymysql.connect(
         host=server['host'], port=server['port'],
@@ -98,10 +97,6 @@ def _ensure_test_db(server: dict):
     )
     try:
         cur = conn.cursor()
-        cur.execute(
-            "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA "
-            "WHERE SCHEMA_NAME = %s", (_TEST_DB_NAME,)
-        )
         cur.execute(
             f"CREATE DATABASE IF NOT EXISTS `{_TEST_DB_NAME}` CHARACTER SET utf8mb4"
         )
