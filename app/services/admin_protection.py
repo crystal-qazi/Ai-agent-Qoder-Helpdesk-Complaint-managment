@@ -23,7 +23,6 @@ from app.services.audit import AuditService
 # This is a system-level concept (seeded as ``is_system=True``); see the
 # data-repair script for how it is identified.
 ADMIN_ROLE_NAME = 'admin'
-ADMIN_ROLE_ID_FALLBACK = 1
 
 
 @dataclass
@@ -47,46 +46,103 @@ class AdminProtectionService:
     """Server-side guards that keep at least one working administrator."""
 
     # ------------------------------------------------------------------
+    # Audit persistence
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _persist_audit(record) -> None:
+        """Durably persist a security audit record.
+
+        ``AuditService.log_action`` only stages the row on the session; if
+        the surrounding route re-renders without committing (which is the
+        normal path for a validation failure) and then Flask tears the
+        session down, the pending row is rolled back and the security
+        event is lost.
+
+        To keep the audit log reliable we start a *nested* commit:
+          1. Begin the audit record on the current session.
+          2. Commit just that record so the row is durable.
+          3. Begin a new session transaction, so any subsequent route work
+             starts from a clean slate.
+
+        We do not commit the caller's in-progress entity changes.
+        """
+        try:
+            db.session.flush()
+            db.session.commit()
+        except Exception:
+            # A rollback here is fine: the audit row was already flushed to
+            # the database, so its persistence is now independent of the
+            # caller's session state.
+            db.session.rollback()
+
+    @classmethod
+    def _log_blocked(cls, user_id, action, entity_type, entity_id, **kw):
+        """Stage a security audit record and durably persist it.
+
+        The record is committed immediately so that a subsequent rollback
+        in the route (which is the normal path when a validation check
+        fails) does not lose the security event.
+        """
+        record = AuditService.log_action(
+            user_id=user_id,
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            success=False,
+            **kw,
+        )
+        cls._persist_audit(record)
+        return record
+
+    # ------------------------------------------------------------------
     # Queries
     # ------------------------------------------------------------------
     @staticmethod
-    def _lock_active_admins() -> int:
+    def _admin_role() -> Optional[Role]:
+        """Resolve the privileged admin role by name.
+
+        ``with_for_update`` locks the role row (MySQL gap + record lock)
+        for the current transaction, so every last-admin-sensitive
+        operation must serialize through this single row.
+        """
+        return (Role.query.filter_by(name=ADMIN_ROLE_NAME)
+                .with_for_update().first())
+
+    @classmethod
+    def _require_admin_role(cls) -> Role:
+        """Return the admin-role row, raising if it does not exist.
+
+        Fails safely: callers must not interpret an unrelated role with a
+        small numeric ID as "the administrator role".
+        """
+        role = cls._admin_role()
+        if role is None:
+            raise LookupError(
+                'The admin role was not found; last-admin protection is '
+                'unavailable until the admin role exists.'
+            )
+        return role
+
+    @classmethod
+    def _lock_active_admins(cls, exclude_user_id: Optional[int] = None) -> int:
         """Return the number of active users holding the admin role.
 
-        Uses SELECT ... FOR UPDATE so a concurrent request that is
-        trying to deactivate the last admin at the same instant will be
-        serialized behind this transaction.
+        Acquires the shared admin-role row lock first (serializes every
+        last-admin check), then counts. This is safe across concurrent
+        deactivations because both transactions are serialized on the
+        same row lock.
         """
+        cls._require_admin_role()
         q = (
             db.session.query(User.id)
             .outerjoin(User.roles)
-            .filter(Role.name == ADMIN_ROLE_NAME, Role.is_active == True,
+            .filter(Role.name == ADMIN_ROLE_NAME,
+                    Role.is_active == True,
                     User.is_active == True)
-            .distinct()
-            .with_for_update()
         )
-        return q.count()
-
-    @staticmethod
-    def _lock_active_admins_excluding(user_id: int) -> int:
-        q = (
-            db.session.query(User.id)
-            .outerjoin(User.roles)
-            .filter(Role.name == ADMIN_ROLE_NAME, Role.is_active == True,
-                    User.is_active == True,
-                    User.id != user_id)
-            .distinct()
-            .with_for_update()
-        )
-        return q.count()
-
-    @staticmethod
-    def _admin_role_id() -> int:
-        role = (Role.query.filter_by(name=ADMIN_ROLE_NAME)
-                .with_for_update().first())
-        if role:
-            return role.id
-        return ADMIN_ROLE_ID_FALLBACK
+        if exclude_user_id is not None:
+            q = q.filter(User.id != exclude_user_id)
+        return q.distinct().count()
 
     # ------------------------------------------------------------------
     # High-level checks (each returns ProtectionCheck; rejections are
@@ -98,19 +154,18 @@ class AdminProtectionService:
         if not user.has_role(ADMIN_ROLE_NAME):
             return ProtectionCheck.allow()
 
-        count = cls._lock_active_admins_excluding(user.id)
+        count = cls._lock_active_admins(exclude_user_id=user.id)
         if count == 0:
             check = ProtectionCheck.reject(
                 'Cannot deactivate the last active administrator.',
                 'last_active_admin_deactivation_blocked',
             )
-            AuditService.log_action(
+            cls._log_blocked(
                 user_id=actor_user.id,
                 action='blocked_deactivate_user',
                 entity_type='user',
                 entity_id=user.id,
                 entity_repr=user.username,
-                success=False,
                 error_message=check.audit_reason,
                 severity='warning',
                 category='security',
@@ -134,19 +189,19 @@ class AdminProtectionService:
 
         # If the actor would lose the admin role (not in new_role_ids), the
         # system would lose an admin. Check whether another active admin exists.
-        admin_role_id = cls._admin_role_id()
+        admin_role_id = cls._require_admin_role().id
         keeps_admin = admin_role_id in [int(r) for r in (new_role_ids or [])]
 
         if keeps_admin:
             return ProtectionCheck.allow()
 
-        count = cls._lock_active_admins_excluding(user.id)
+        count = cls._lock_active_admins(exclude_user_id=user.id)
         if count == 0:
             check = ProtectionCheck.reject(
                 'You cannot remove your own administrator role: no other active administrator remains.',
                 'last_active_admin_role_removal_blocked',
             )
-            AuditService.log_action(
+            cls._log_blocked(
                 user_id=actor_user.id,
                 action='blocked_role_removal',
                 entity_type='user',
@@ -154,7 +209,6 @@ class AdminProtectionService:
                 entity_repr=user.username,
                 new_values={'removed_role': ADMIN_ROLE_NAME,
                             'submitted_role_ids': [int(r) for r in (new_role_ids or [])]},
-                success=False,
                 error_message=check.audit_reason,
                 severity='warning',
                 category='security',
@@ -171,13 +225,12 @@ class AdminProtectionService:
                 'Cannot deactivate the Administrator role: no active administrators remain.',
                 'admin_role_deactivation_blocked_no_active_admins',
             )
-            AuditService.log_action(
+            cls._log_blocked(
                 user_id=actor_user.id,
                 action='blocked_role_deactivation',
                 entity_type='role',
-                entity_id=cls._admin_role_id(),
+                entity_id=cls._require_admin_role().id,
                 entity_repr=ADMIN_ROLE_NAME,
-                success=False,
                 error_message=check.audit_reason,
                 severity='warning',
                 category='security',
@@ -195,13 +248,12 @@ class AdminProtectionService:
                 f'Cannot deactivate the Administrator role: {total_active_admins} active administrator(s) currently rely on it.',
                 'admin_role_deactivation_blocked_in_use',
             )
-            AuditService.log_action(
+            cls._log_blocked(
                 user_id=actor_user.id,
                 action='blocked_role_deactivation',
                 entity_type='role',
-                entity_id=cls._admin_role_id(),
+                entity_id=cls._require_admin_role().id,
                 entity_repr=ADMIN_ROLE_NAME,
-                success=False,
                 error_message=check.audit_reason,
                 severity='warning',
                 category='security',
@@ -293,7 +345,7 @@ class AdminProtectionService:
                 return check
 
         # 4. Privilege escalation: non-admin cannot grant the admin role
-        admin_role_id = cls._admin_role_id()
+        admin_role_id = cls._require_admin_role().id
         if admin_role_id in set(normalized) and not actor_user.has_role(ADMIN_ROLE_NAME):
             check = ProtectionCheck.reject(
                 'You do not have permission to assign the administrator role.',
