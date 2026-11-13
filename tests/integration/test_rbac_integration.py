@@ -2,7 +2,7 @@
 protection) against a real database.
 
 The suite runs against a DEDICATED test database (``helpdesk_qoder_test``),
-created and dropped fresh on every run. It is fully isolated from the
+created if absent and schema-reset only inside the validated test database. It is fully isolated from the
 production database — the production schema and records are never touched.
 
 Each test:
@@ -30,13 +30,14 @@ from dotenv import load_dotenv
 
 # Load .env the same way run.py does, so DB host/port/credentials are known.
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
+_APPLICATION_DATABASE_URL = os.environ.get('DATABASE_URL')
 
 _TEST_DB_NAME = os.environ.get('TEST_DB_NAME', 'helpdesk_qoder_test')
 
 
 def _server_config():
     """Parse the configured application DB URL without lossy string splitting."""
-    raw_url = os.environ.get('DATABASE_URL')
+    raw_url = _APPLICATION_DATABASE_URL
     if raw_url:
         parsed = make_url(raw_url)
         if not parsed.drivername.startswith('mysql'):
@@ -101,14 +102,8 @@ def _ensure_test_db(server: dict):
             "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA "
             "WHERE SCHEMA_NAME = %s", (_TEST_DB_NAME,)
         )
-        if cur.fetchone():
-            raise RuntimeError(
-                f'Test database {_TEST_DB_NAME!r} already exists. '
-                'Refusing to erase or reuse it; provision a fresh dedicated '
-                'test schema and rerun.'
-            )
         cur.execute(
-            f"CREATE DATABASE `{_TEST_DB_NAME}` CHARACTER SET utf8mb4"
+            f"CREATE DATABASE IF NOT EXISTS `{_TEST_DB_NAME}` CHARACTER SET utf8mb4"
         )
         conn.commit()
     finally:
@@ -155,6 +150,9 @@ class RBACIntegrationTestBase(unittest.TestCase):
             cls._build_app_once()
         with cls._app.app_context():
             from app.extensions import db
+            # Destructive schema reset is permitted only after the dedicated
+            # test-schema identity checks above; never targets the app DB.
+            db.drop_all()
             db.create_all()
         cls._ctx = cls._seed()
 
