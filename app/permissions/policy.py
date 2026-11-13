@@ -316,22 +316,24 @@ class PermissionPolicy:
     
     @staticmethod
     def get_accessible_complaints_query(user):
-        """Get base query for complaints accessible to user."""
+        """Get base query for complaints accessible to user.
+
+        Reporters can always see complaints they submitted, regardless of
+        their other complaint permissions.  The complaints.view_my permission
+        additionally exposes complaints the user is assigned to.
+        """
         from app.extensions import db
         from app.models import Complaint
 
         if user.has_permission('complaints.view_all'):
             return Complaint.query
 
-        if user.has_permission('complaints.view_my'):
-            return Complaint.query.filter(
-                db.or_(
-                    Complaint.assigned_to_user_id == user.id,
-                    Complaint.reported_by_user_id == user.id,
-                )
-            )
+        conditions = [Complaint.reported_by_user_id == user.id]
 
-        return Complaint.query.filter(False)
+        if user.has_permission('complaints.view_my'):
+            conditions.append(Complaint.assigned_to_user_id == user.id)
+
+        return Complaint.query.filter(db.or_(*conditions))
     
     @staticmethod
     def get_assignable_users(complaint, user):

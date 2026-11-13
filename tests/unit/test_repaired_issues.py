@@ -210,9 +210,14 @@ class TestSLADeadlineLoopProtection(unittest.TestCase):
 
 
 class TestFirstResponseTracking(unittest.TestCase):
-    """Verifies first_response_at is set when a support agent adds an internal comment."""
+    """Verifies first_response_at is set only on the first reporter-visible
+    comment from a user who is not the reporter themselves.
 
-    def test_first_response_set_on_agent_internal_comment(self):
+    Internal comments do NOT set first_response_at — they are invisible to
+    the reporter.  Assignment is also not a reporter-visible response.
+    """
+
+    def test_first_response_set_on_reporter_visible_comment(self):
         from app.services.complaint import ComplaintService
 
         complaint = MagicMock()
@@ -221,40 +226,19 @@ class TestFirstResponseTracking(unittest.TestCase):
         complaint.reported_by_user_id = 10
 
         user = MagicMock()
-        user.id = 20  # different from reporter
+        user.id = 20  # agent, different from reporter
 
         with patch('app.services.complaint.db.session') as mock_session, \
              patch('app.services.complaint.NotificationService'), \
              patch('app.services.complaint.AuditService'):
 
             success, msg = ComplaintService.add_comment(
-                complaint, "Fix in progress", user, visibility='internal')
+                complaint, "Fix in progress", user, visibility='reporter_visible')
             self.assertTrue(success)
             self.assertIsNotNone(complaint.first_response_at,
-                                 "first_response_at must be set on internal comment from non-reporter")
+                                 "first_response_at must be set on a reporter-visible comment from a non-reporter")
 
-    def test_first_response_not_overwritten_on_reporter_comment(self):
-        from app.services.complaint import ComplaintService
-
-        already = datetime.utcnow() - timedelta(hours=1)
-
-        complaint = MagicMock()
-        complaint.id = 1
-        complaint.first_response_at = already
-        complaint.reported_by_user_id = 10
-
-        user = MagicMock()
-        user.id = 10  # same as reporter
-
-        with patch('app.services.complaint.db.session') as mock_session, \
-             patch('app.services.complaint.NotificationService'), \
-             patch('app.services.complaint.AuditService'):
-
-            ComplaintService.add_comment(complaint, "Following up", user, visibility='internal')
-            self.assertEqual(complaint.first_response_at, already,
-                             "existing first_response_at must not be overwritten")
-
-    def test_reporter_visible_comment_does_not_set_response(self):
+    def test_first_response_not_set_on_internal_comment(self):
         from app.services.complaint import ComplaintService
 
         complaint = MagicMock()
@@ -263,15 +247,54 @@ class TestFirstResponseTracking(unittest.TestCase):
         complaint.reported_by_user_id = 10
 
         user = MagicMock()
-        user.id = 20  # agent, not reporter
+        user.id = 20  # agent, different from reporter
 
         with patch('app.services.complaint.db.session') as mock_session, \
              patch('app.services.complaint.NotificationService'), \
              patch('app.services.complaint.AuditService'):
 
-            ComplaintService.add_comment(complaint, "Reply to patient", user, visibility='reporter_visible')
+            ComplaintService.add_comment(complaint, "Internal note", user, visibility='internal')
             self.assertIsNone(complaint.first_response_at,
-                              "reporter-visible comment should not set first_response_at")
+                              "internal comments must NOT set first_response_at")
+
+    def test_first_response_not_set_on_reporters_own_comment(self):
+        from app.services.complaint import ComplaintService
+
+        complaint = MagicMock()
+        complaint.id = 1
+        complaint.first_response_at = None
+        complaint.reported_by_user_id = 10
+
+        user = MagicMock()
+        user.id = 10  # the reporter themselves
+
+        with patch('app.services.complaint.db.session') as mock_session, \
+             patch('app.services.complaint.NotificationService'), \
+             patch('app.services.complaint.AuditService'):
+
+            ComplaintService.add_comment(complaint, "Adding a note", user, visibility='reporter_visible')
+            self.assertIsNone(complaint.first_response_at,
+                              "the reporter's own comment does not count as first response")
+
+    def test_first_response_not_overwritten(self):
+        from app.services.complaint import ComplaintService
+
+        already = datetime.utcnow() - timedelta(hours=1)
+        complaint = MagicMock()
+        complaint.id = 1
+        complaint.first_response_at = already
+        complaint.reported_by_user_id = 10
+
+        user = MagicMock()
+        user.id = 20
+
+        with patch('app.services.complaint.db.session') as mock_session, \
+             patch('app.services.complaint.NotificationService'), \
+             patch('app.services.complaint.AuditService'):
+
+            ComplaintService.add_comment(complaint, "Second reply", user, visibility='reporter_visible')
+            self.assertEqual(complaint.first_response_at, already,
+                             "existing first_response_at must not be overwritten")
 
 
 class TestScriptFileIntegrity(unittest.TestCase):
