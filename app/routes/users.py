@@ -71,6 +71,14 @@ def create_user():
         
         errors = validate_user_data(data)
         
+        # Privilege escalation check: prevent non-admin from assigning admin role
+        if data['role_ids'] and not errors.get('role_ids'):
+            requested_roles = Role.query.filter(Role.id.in_(data['role_ids'])).all()
+            has_admin_role = any(r.name == 'admin' for r in requested_roles)
+            if has_admin_role and not current_user.has_role('admin'):
+                flash('You do not have permission to assign the administrator role.', 'danger')
+                errors['role_ids'] = 'Privilege escalation blocked'
+        
         if not errors:
             try:
                 user = User(
@@ -125,7 +133,8 @@ def create_user():
                 flash(f'Error creating user: {str(e)}', 'danger')
         else:
             for field, error in errors.items():
-                flash(error, 'danger')
+                if error != 'Privilege escalation blocked':
+                    flash(error, 'danger')
     
     # Get form data
     roles = Role.query.filter_by(is_active=True).order_by(Role.name).all()
@@ -179,6 +188,33 @@ def edit_user(user_id):
         
         errors = validate_user_data(data, user_id)
         
+        # Last-admin protection: prevent deactivating the last active admin
+        if user.has_role('admin') and not data['is_active']:
+            other_active_admins = User.query.join(User.roles).filter(
+                Role.name == 'admin',
+                User.is_active == True,
+                User.id != user.id,
+            ).count()
+            if other_active_admins == 0:
+                flash('Cannot deactivate the last active administrator.', 'danger')
+                errors['is_active'] = 'Last admin protection'
+
+        # Self-protection: prevent an admin from removing their own admin role
+        if user.id == current_user.id and not data['role_ids']:
+            current_user_has_admin = current_user.has_role('admin')
+            if current_user_has_admin:
+                flash('You cannot remove your own administrator role.', 'danger')
+                errors['role_ids'] = 'Cannot remove your own admin access'
+
+        # Privilege escalation check: prevent non-admin from assigning admin role
+        if data['role_ids']:
+            from app.models import Role as R
+            requested_roles = R.query.filter(R.id.in_(data['role_ids'])).all()
+            has_admin_role = any(r.name == 'admin' for r in requested_roles)
+            if has_admin_role and not current_user.has_role('admin'):
+                flash('You do not have permission to assign the administrator role.', 'danger')
+                errors['role_ids'] = 'Privilege escalation blocked'
+
         if not errors:
             try:
                 old_data = {
@@ -243,7 +279,8 @@ def edit_user(user_id):
                 flash(f'Error updating user: {str(e)}', 'danger')
         else:
             for field, error in errors.items():
-                flash(error, 'danger')
+                if error not in ('Last admin protection', 'Cannot remove your own admin access', 'Privilege escalation blocked'):
+                    flash(error, 'danger')
     
     # Get form data
     roles = Role.query.filter_by(is_active=True).order_by(Role.name).all()
@@ -267,6 +304,17 @@ def delete_user(user_id):
     if user.id == current_user.id:
         flash('You cannot delete your own account.', 'danger')
         return redirect(url_for('users.view_user', user_id=user.id))
+    
+    # Last-admin protection
+    if user.has_role('admin'):
+        other_active_admins = User.query.join(User.roles).filter(
+            Role.name == 'admin',
+            User.is_active == True,
+            User.id != user.id,
+        ).count()
+        if other_active_admins == 0:
+            flash('Cannot deactivate the last active administrator.', 'danger')
+            return redirect(url_for('users.view_user', user_id=user.id))
     
     # Soft delete
     user.is_active = False
@@ -497,10 +545,52 @@ def delete_role(role_id):
         entity_type='role',
         entity_id=role_id,
         entity_repr=role.name,
-        category='config',
+        category='security',
+        severity='warning',
     )
     
     flash('Role deleted successfully.', 'success')
+    return redirect(url_for('users.list_roles'))
+
+
+@users_bp.route('/roles/<int:role_id>/toggle', methods=['POST'])
+@login_required
+@can_manage_roles
+def toggle_role(role_id):
+    """Activate or deactivate a role."""
+    role = Role.query.get_or_404(role_id)
+    new_state = not role.is_active
+
+    # Protect the last active admin: if the role being deactivated is 'admin'
+    # and the current admin user would lose all access, block the operation.
+    if not new_state and role.name == 'admin':
+        # Check: are there any other active users with the 'admin' role?
+        other_admins = User.query.join(User.roles).filter(
+            Role.name == 'admin',
+            User.is_active == True,
+            User.id != current_user.id,
+        ).count()
+        if other_admins == 0:
+            flash('Cannot deactivate the last active Administrator role.', 'danger')
+            return redirect(url_for('users.list_roles'))
+
+    role.is_active = new_state
+    role.updated_by_user_id = current_user.id
+    db.session.commit()
+
+    AuditService.log_action(
+        user_id=current_user.id,
+        action='toggle_role',
+        entity_type='role',
+        entity_id=role.id,
+        entity_repr=role.name,
+        new_values={'is_active': new_state},
+        category='security',
+        severity='warning',
+    )
+
+    status = 'activated' if new_state else 'deactivated'
+    flash(f'Role "{role.display_name}" {status}.', 'success')
     return redirect(url_for('users.list_roles'))
 
 

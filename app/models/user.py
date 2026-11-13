@@ -152,14 +152,22 @@ class User(BaseModel, UserMixin):
         return check_password_hash(self.password_hash, password)
     
     def has_permission(self, permission_name):
-        """Check if user has a specific permission through any role."""
+        """Check if user has a specific permission through any active role.
+
+        Inactive roles and inactive permissions never grant access.
+        """
+        from app.models import Role, Permission
         return db.session.query(role_permissions.c.permission_id).join(
             user_roles, user_roles.c.role_id == role_permissions.c.role_id
+        ).join(
+            Role, Role.id == user_roles.c.role_id
         ).join(
             Permission, Permission.id == role_permissions.c.permission_id
         ).filter(
             user_roles.c.user_id == self.id,
             Permission.name == permission_name,
+            Role.is_active == True,
+            Permission.is_active == True,
         ).count() > 0
     
     def has_role(self, role_name):
@@ -171,13 +179,18 @@ class User(BaseModel, UserMixin):
         return self.roles.filter(Role.name.in_(role_names)).count() > 0
     
     def get_permissions(self):
-        """Get all permissions for this user."""
+        """Get all effective permissions for this user (active roles + active permissions only)."""
+        from app.models import Role, Permission
         return Permission.query.join(
             role_permissions, role_permissions.c.permission_id == Permission.id
         ).join(
-            user_roles, user_roles.c.role_id == role_permissions.c.role_id
+            Role, Role.id == role_permissions.c.role_id
+        ).join(
+            user_roles, user_roles.c.role_id == Role.id
         ).filter(
-            user_roles.c.user_id == self.id
+            user_roles.c.user_id == self.id,
+            Role.is_active == True,
+            Permission.is_active == True,
         ).distinct().all()
     
     def record_login(self, ip_address):

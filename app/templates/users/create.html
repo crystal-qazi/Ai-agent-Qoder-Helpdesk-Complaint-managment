@@ -76,10 +76,15 @@
                     <label class="block text-sm font-medium text-gray-700 mb-2">Roles <span class="text-red-500">*</span></label>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {% for role in roles %}
-                        <label class="flex items-center space-x-2 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
+                        <label class="flex items-center space-x-2 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer {% if role.description %}relative{% endif %}">
                             <input type="checkbox" name="role_ids" value="{{ role.id }}" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" {% if role.id|string in selected_roles %}checked{% endif %}>
-                            <span class="text-sm text-gray-900">{{ role.display_name }}</span>
-                            <span class="text-xs text-gray-500 ml-auto">{{ role.name }}</span>
+                            <div>
+                                <span class="text-sm text-gray-900">{{ role.display_name }}</span>
+                                <span class="text-xs text-gray-500 ml-2">{{ role.name }}</span>
+                                {% if role.description %}
+                                <p class="text-xs text-gray-500 mt-0.5 truncate max-w-xs" title="{{ role.description }}">{{ role.description }}</p>
+                                {% endif %}
+                            </div>
                         </label>
                         {% endfor %}
                     </div>

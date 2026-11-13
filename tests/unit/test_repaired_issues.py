@@ -325,8 +325,141 @@ class TestScriptFileIntegrity(unittest.TestCase):
         self.assertIn('INSERT IGNORE', content)
 
 
+class TestInactiveRolePermissionFiltering(unittest.TestCase):
+    """Verifies has_permission and get_permissions filter out inactive roles/permissions."""
+
+    def _read_user_model_source(self):
+        path = os.path.join(_PROJECT_ROOT, 'app', 'models', 'user.py')
+        with open(path) as f:
+            return f.read()
+
+    def test_has_permission_source_filters_role_is_active(self):
+        """The has_permission method must include Role.is_active == True filter."""
+        src = self._read_user_model_source()
+        # Find the has_permission method body
+        start = src.index('def has_permission')
+        end = src.index('def has_role', start)
+        method_src = src[start:end]
+        self.assertIn('Role.is_active', method_src,
+                      "has_permission must filter by Role.is_active")
+        self.assertIn('Permission.is_active', method_src,
+                      "has_permission must filter by Permission.is_active")
+
+    def test_get_permissions_source_filters_inactive(self):
+        """The get_permissions method must filter active roles and permissions."""
+        src = self._read_user_model_source()
+        start = src.index('def get_permissions')
+        end = src.index('def record_login', start)
+        method_src = src[start:end]
+        self.assertIn('Role.is_active', method_src,
+                      "get_permissions must filter by Role.is_active")
+        self.assertIn('Permission.is_active', method_src,
+                      "get_permissions must filter by Permission.is_active")
+
+
+class TestPrivilegeEscalationPrevention(unittest.TestCase):
+    """Verifies the user routes block non-admins from assigning admin roles."""
+
+    def _read_users_route_source(self):
+        path = os.path.join(_PROJECT_ROOT, 'app', 'routes', 'users.py')
+        with open(path) as f:
+            return f.read()
+
+    def test_create_user_has_privilege_check(self):
+        """create_user route must check for admin role assignment."""
+        src = self._read_users_route_source()
+        start = src.index("def create_user")
+        end = src.index("@users_bp.route('/<int:user_id>')", start)
+        method_src = src[start:end]
+        self.assertIn("has_admin_role", method_src,
+                      "create_user must check if admin role is being assigned")
+
+    def test_edit_user_has_privilege_check(self):
+        """edit_user route must check for admin role assignment."""
+        src = self._read_users_route_source()
+        start = src.index("def edit_user")
+        end = src.index("@users_bp.route('/<int:user_id>/delete'", start)
+        method_src = src[start:end]
+        self.assertIn("has_admin_role", method_src,
+                      "edit_user must check if admin role is being assigned")
+
+
+class TestLastAdminProtection(unittest.TestCase):
+    """Verifies last-admin deactivation and deletion protections exist."""
+
+    def _read_users_route_source(self):
+        path = os.path.join(_PROJECT_ROOT, 'app', 'routes', 'users.py')
+        with open(path) as f:
+            return f.read()
+
+    def test_delete_user_protects_last_admin(self):
+        """delete_user must check for last active admin."""
+        src = self._read_users_route_source()
+        start = src.index("def delete_user")
+        end = src.index("@users_bp.route('/<int:user_id>/unlock'", start)
+        method_src = src[start:end]
+        self.assertIn("other_active_admins", method_src,
+                      "delete_user must count other active admins before deactivating")
+
+    def test_edit_user_protects_last_admin(self):
+        """edit_user must prevent deactivating the last active admin."""
+        src = self._read_users_route_source()
+        start = src.index("def edit_user")
+        end = src.index("@users_bp.route('/<int:user_id>/delete'", start)
+        method_src = src[start:end]
+        self.assertIn("other_active_admins", method_src,
+                      "edit_user must protect the last active admin from deactivation")
+
+    def test_toggle_role_protects_last_admin(self):
+        """toggle_role must prevent deactivating the admin role if it's the last one."""
+        src = self._read_users_route_source()
+        start = src.index("def toggle_role")
+        end = src.index("@users_bp.route('/permissions')", start)
+        method_src = src[start:end]
+        self.assertIn("other_admins", method_src,
+                      "toggle_role must protect the last admin role")
+
+
+class TestRoleDuplicateRejection(unittest.TestCase):
+    """Verifies create_role rejects duplicate names."""
+
+    def _read_users_route_source(self):
+        path = os.path.join(_PROJECT_ROOT, 'app', 'routes', 'users.py')
+        with open(path) as f:
+            return f.read()
+
+    def test_create_role_checks_duplicate_name(self):
+        src = self._read_users_route_source()
+        start = src.index("def create_role")
+        end = src.index("@users_bp.route('/roles/<int:role_id>/edit'", start)
+        method_src = src[start:end]
+        self.assertIn("Role.query.filter_by(name=name).first()", method_src,
+                      "create_role must check for existing role names")
+
+
+class TestRoleToggleRoute(unittest.TestCase):
+    """Verifies the toggle_role route exists and updates is_active."""
+
+    def _read_users_route_source(self):
+        path = os.path.join(_PROJECT_ROOT, 'app', 'routes', 'users.py')
+        with open(path) as f:
+            return f.read()
+
+    def test_toggle_route_defined(self):
+        src = self._read_users_route_source()
+        self.assertIn("def toggle_role", src,
+                      "toggle_role route must be defined")
+
+    def test_toggle_updates_is_active(self):
+        src = self._read_users_route_source()
+        start = src.index("def toggle_role")
+        end = src.index("@users_bp.route('/permissions')", start)
+        method_src = src[start:end]
+        self.assertIn("new_state = not role.is_active", method_src,
+                      "toggle_role must flip the is_active flag")
+        self.assertIn("role.is_active = new_state", method_src,
+                      "toggle_role must persist the new state")
+
+
 if __name__ == '__main__':
     unittest.main()
-
-
-
