@@ -191,7 +191,7 @@ roles_data = [
     ('employee', 'Internal Employee', False, ['dashboard.view', 'complaints.create', 'complaints.view_my', 'notifications.view']),
 ]
 for name, display, is_system, perm_codes in roles_data:
-    c.execute(f'{insert_sql} INTO roles (name, display_name, is_system) VALUES ({param_style}, {param_style}, {param_style})', (name, display, is_system))
+    c.execute(f'{insert_sql} INTO roles (name, display_name, is_system, is_active) VALUES ({param_style}, {param_style}, {param_style}, 1)', (name, display, is_system))
     c.execute('SELECT id FROM roles WHERE name=' + param_style, (name,))
     role_id = c.fetchone()[0]
     for perm_code in perm_codes:

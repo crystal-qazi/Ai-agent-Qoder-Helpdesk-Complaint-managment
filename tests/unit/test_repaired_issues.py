@@ -307,6 +307,22 @@ class TestScriptFileIntegrity(unittest.TestCase):
         self.assertIn("'0':", content, "seed_mysql.py should use integer weekday string keys")
         self.assertNotIn("'monday':", content, "seed_mysql.py must not use day-name strings")
 
+    def test_seed_roles_include_is_active(self):
+        """seed_mysql.py must explicitly set is_active=1 when inserting roles."""
+        seed_path = os.path.join(_PROJECT_ROOT, 'scripts', 'seed_mysql.py')
+        with open(seed_path) as f:
+            content = f.read()
+        self.assertIn("is_active", content,
+                      "seed_mysql.py role inserts must include is_active column")
+
+    def test_seed_data_roles_include_is_active(self):
+        """seed_data.py must explicitly set is_active=1 when inserting roles."""
+        seed_path = os.path.join(_PROJECT_ROOT, 'scripts', 'seed_data.py')
+        with open(seed_path) as f:
+            content = f.read()
+        self.assertIn("is_active", content,
+                      "seed_data.py role inserts must include is_active column")
+
     def test_no_duplicate_version_columns_in_seed(self):
         seed_path = os.path.join(_PROJECT_ROOT, 'scripts', 'seed_mysql.py')
         with open(seed_path) as f:
@@ -416,8 +432,8 @@ class TestLastAdminProtection(unittest.TestCase):
         start = src.index("def toggle_role")
         end = src.index("@users_bp.route('/permissions')", start)
         method_src = src[start:end]
-        self.assertIn("other_admins", method_src,
-                      "toggle_role must protect the last admin role")
+        self.assertIn("active_admins", method_src,
+                      "toggle_role must check active admin count before deactivating admin role")
 
 
 class TestRoleDuplicateRejection(unittest.TestCase):

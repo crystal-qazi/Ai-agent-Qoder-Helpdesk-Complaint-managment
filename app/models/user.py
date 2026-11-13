@@ -171,12 +171,12 @@ class User(BaseModel, UserMixin):
         ).count() > 0
     
     def has_role(self, role_name):
-        """Check if user has a specific role."""
-        return self.roles.filter(Role.name == role_name).count() > 0
+        """Check if user has a specific active role. Inactive roles never grant access."""
+        return self.roles.filter(Role.name == role_name, Role.is_active == True).count() > 0
     
     def has_any_role(self, role_names):
-        """Check if user has any of the specified roles."""
-        return self.roles.filter(Role.name.in_(role_names)).count() > 0
+        """Check if user has any of the specified active roles."""
+        return self.roles.filter(Role.name.in_(role_names), Role.is_active == True).count() > 0
     
     def get_permissions(self):
         """Get all effective permissions for this user (active roles + active permissions only)."""

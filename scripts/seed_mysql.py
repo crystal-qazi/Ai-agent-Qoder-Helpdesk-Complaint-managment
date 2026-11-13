@@ -105,7 +105,7 @@ roles_data = [
     ('employee', 'Internal Employee', False, ['dashboard.view', 'complaints.create', 'complaints.view_my', 'notifications.view']),
 ]
 for name, display, is_system, perm_codes in roles_data:
-    c.execute('INSERT IGNORE INTO roles (name, display_name, is_system) VALUES (%s, %s, %s)', (name, display, is_system))
+    c.execute('INSERT IGNORE INTO roles (name, display_name, is_system, is_active) VALUES (%s, %s, %s, 1)', (name, display, is_system))
     role_id = c.lastrowid
     if role_id == 0:
         c.execute('SELECT id FROM roles WHERE name=%s', (name,))

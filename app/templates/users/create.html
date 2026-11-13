@@ -74,9 +74,10 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="sm:col-span-2">
                     <label class="block text-sm font-medium text-gray-700 mb-2">Roles <span class="text-red-500">*</span></label>
+                    {% if roles %}
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {% for role in roles %}
-                        <label class="flex items-center space-x-2 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer {% if role.description %}relative{% endif %}">
+                        <label class="flex items-center space-x-2 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 cursor-pointer">
                             <input type="checkbox" name="role_ids" value="{{ role.id }}" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500" {% if role.id|string in selected_roles %}checked{% endif %}>
                             <div>
                                 <span class="text-sm text-gray-900">{{ role.display_name }}</span>
@@ -88,6 +89,9 @@
                         </label>
                         {% endfor %}
                     </div>
+                    {% else %}
+                    <p class="text-sm text-gray-500 italic">No active roles found. Create a role in Roles &amp; Permissions first.</p>
+                    {% endif %}
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>

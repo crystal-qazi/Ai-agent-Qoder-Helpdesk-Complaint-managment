@@ -561,17 +561,15 @@ def toggle_role(role_id):
     role = Role.query.get_or_404(role_id)
     new_state = not role.is_active
 
-    # Protect the last active admin: if the role being deactivated is 'admin'
-    # and the current admin user would lose all access, block the operation.
+    # Protect the last active admin: block deactivation of the 'admin' role
+    # if no active users hold that role.
     if not new_state and role.name == 'admin':
-        # Check: are there any other active users with the 'admin' role?
-        other_admins = User.query.join(User.roles).filter(
+        active_admins = User.query.join(User.roles).filter(
             Role.name == 'admin',
             User.is_active == True,
-            User.id != current_user.id,
         ).count()
-        if other_admins == 0:
-            flash('Cannot deactivate the last active Administrator role.', 'danger')
+        if active_admins == 0:
+            flash('Cannot deactivate the Administrator role: no active administrators remain.', 'danger')
             return redirect(url_for('users.list_roles'))
 
     role.is_active = new_state
