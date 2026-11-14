@@ -477,18 +477,31 @@ def edit_role(role_id):
         display_name = request.form.get('display_name', '').strip()
         description = request.form.get('description', '').strip()
         permission_ids = request.form.getlist('permission_ids')
-        
+
+        # Guard the admin role before touching anything. A non-admin
+        # actor must not be able to edit the admin role's permission
+        # set in a way that changes effective admin privileges.
+        admin_guard = AdminProtectionService.can_edit_admin_role(
+            current_user,
+            permission_ids,
+            original_permission_ids=[p.id for p in role.permissions],
+            role_id=role.id,
+        )
+        if not admin_guard.ok:
+            flash(admin_guard.reason, 'danger')
+            return redirect(url_for('users.list_roles'))
+
         errors = {}
         if not display_name:
             errors['display_name'] = 'Display name is required.'
-        
+
         if not errors:
             try:
                 old_permissions = list(role.permissions)
-                
+
                 role.display_name = display_name
                 role.description = description or None
-                
+
                 if permission_ids:
                     permissions = Permission.query.filter(Permission.id.in_(permission_ids)).all()
                     role.permissions = permissions

@@ -1,4 +1,11 @@
-"""Database setup - creates SQLite database with all tables and seed data."""
+"""Database setup - creates SQLite database with all tables and seed data.
+
+DEPRECATED: This script rewrites a SQLite file used by an earlier build.
+The application now targets MySQL via the SQLAlchemy models, and the
+canonical rebuild is ``scripts/reset_and_seed.py``.  Retained only for
+historical local SQLite scratchpads; do NOT run it against a
+production database.
+"""
 import os
 import sqlite3
 import json
@@ -7,7 +14,15 @@ from werkzeug.security import generate_password_hash
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, 'instance', 'helpdesk.db')
 
+
 def create_tables():
+    # Fail-closed: refuse to touch a production MySQL database.
+    if os.environ.get('FLASK_ENV', 'development').lower() == 'production':
+        raise SystemExit(
+            'setup_db.py is a legacy SQLite scratchpad. It will not '
+            'rebuild a production schema. Use scripts/reset_and_seed.py '
+            'against a dedicated helpdesk_*_test database instead.'
+        )
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     if os.path.exists(DB_PATH):
         os.remove(DB_PATH)

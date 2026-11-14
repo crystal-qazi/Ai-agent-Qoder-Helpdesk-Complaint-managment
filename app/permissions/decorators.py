@@ -92,7 +92,14 @@ def can_view_complaint(f):
 
 
 def can_edit_complaint(f):
-    """Check if user can edit a complaint."""
+    """Check if user can edit a complaint.
+
+    The check is per-complaint: the reporter of a still-open complaint
+    can edit it even without ``complaints.edit``; a privileged editor
+    can edit any complaint they can view (reporter or assignee, or
+    ``view_all`` holders).  Terminal-status complaints lock down to
+    privileged editors only.
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated:
@@ -101,13 +108,10 @@ def can_edit_complaint(f):
         complaint_id = kwargs.get('complaint_id') or kwargs.get('id')
         if complaint_id:
             from app.models import Complaint
+            from app.permissions.policy import PermissionPolicy
             complaint = Complaint.query.get_or_404(complaint_id)
-
-            # Admin or anyone with edit permission can edit any complaint
-            if current_user.has_permission('complaints.edit'):
-                return f(*args, **kwargs)
-
-            abort(403)
+            if not PermissionPolicy.can_edit_complaint(current_user, complaint):
+                abort(403)
         return f(*args, **kwargs)
     return decorated_function
 

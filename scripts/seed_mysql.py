@@ -1,9 +1,38 @@
-"""Seed MySQL database directly."""
+"""Seed MySQL database directly.
+
+DANGEROUS: This script hard-codes root/root credentials and drops the
+configured database.  Refuse to run unless ``TARGET_TEST_DB=1`` and
+``TEST_DB_NAME`` match ``helpdesk_<identifier>_test``.  The script is
+kept for legacy scratchpads; the canonical path is
+``scripts/reset_and_seed.py``.
+"""
+import os
+import re
+import sys
+
+# Fail-closed target validation before we connect.
+_TEST_DB = os.environ.get('TEST_DB_NAME', 'helpdesk_qoder_test')
+if os.environ.get('TARGET_TEST_DB') != '1':
+    print('[seed_mysql] refusing to run without TARGET_TEST_DB=1')
+    sys.exit(1)
+if not re.fullmatch(r'helpdesk_[a-z0-9_]*_test', _TEST_DB):
+    print(f'[seed_mysql] TEST_DB_NAME={_TEST_DB!r} does not match '
+          f'helpdesk_<identifier>_test; refusing to run.')
+    sys.exit(1)
+
 import pymysql
 import json
 from werkzeug.security import generate_password_hash
 
-conn = pymysql.connect(host='localhost', port=3306, user='root', password='root', database='helpdesk_qoder')
+# Use least-privilege credentials from the environment, with a dev-only
+# fallback that still targets a _test schema.  The fallback is NOT used
+# in production deployments.
+_host = os.environ.get('DB_HOST', 'localhost')
+_port = int(os.environ.get('DB_PORT', '3306'))
+_user = os.environ.get('DB_USER', 'root')
+_password = os.environ.get('DB_PASSWORD', 'root')
+conn = pymysql.connect(host=_host, port=_port, user=_user,
+                       password=_password, database=_TEST_DB)
 c = conn.cursor()
 
 print("Creating tables...")

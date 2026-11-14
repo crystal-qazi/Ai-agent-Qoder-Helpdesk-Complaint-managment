@@ -1,9 +1,26 @@
 """Rebuild the database schema from the current models and seed defaults.
 
 Destructive by design: drops every table known to the SQLAlchemy metadata
-before recreating it. Only run against the development database.
+before recreating it.  Only run against a *test* database, never against
+the production application database.
+
+Safety contract:
+
+  * ``DB_NAME`` must match ``helpdesk_<identifier>_test`` or
+    ``TEST_DB_NAME`` must be set to such a name.  The script refuses to
+    run against any other schema, including the application database.
+  * The script prints the target DB name before doing anything destructive
+    so the operator can confirm the target is the one they intended.
+
+Usage::
+
+    set TARGET_TEST_DB=1    (Windows)   or   TARGET_TEST_DB=1 (POSIX)
+    python scripts/reset_and_seed.py
+
+Without the flag, the script refuses to start.
 """
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,19 +29,47 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from sqlalchemy import text
 
-from app import create_app
-from app.extensions import db
-import app.models  # noqa: F401  (registers all mappers / tables)
-from app.models import (
-    User, Role, Permission, UserProfile, LoginAttempt,
-    Department, SoftwareCatalog, Category, Priority, Status,
-    Complaint, ComplaintAssignment, ComplaintStatusHistory,
-    ComplaintHistory, Comment, Attachment,
-    SLAPolicy, SLAHistory, Holiday, WorkingSchedule,
-    Notification, AuditLog, SystemSetting,
-)
+def _target_database():
+    """Return the configured test database name and assert it is test-only."""
+    test_db_name = os.environ.get('TEST_DB_NAME', '')
+    if not test_db_name:
+        # Fall back to DB_NAME, but we still require the _test suffix.
+        test_db_name = os.environ.get('DB_NAME', '')
+    if not test_db_name:
+        raise SystemExit(
+            'reset_and_seed.py requires either TEST_DB_NAME or DB_NAME to '
+            'be set.  The name must match the pattern '
+            'helpdesk_<identifier>_test.'
+        )
+    if not re.fullmatch(r'helpdesk_[a-z0-9_]*_test', test_db_name):
+        raise SystemExit(
+            f'reset_and_seed.py refuses to target database {test_db_name!r}. '
+            'The name must match helpdesk_<identifier>_test. '
+            'Set TEST_DB_NAME=helpdesk_<identifier>_test before running.'
+        )
+    return test_db_name
+
+
+def main():
+    """Entry point: validate the test-only target, then run the rebuild."""
+    if os.environ.get('TARGET_TEST_DB') != '1':
+        raise SystemExit(
+            'refusing to run: set TARGET_TEST_DB=1 to confirm this is a '
+            'test-only run against a helpdesk_<identifier>_test database.'
+        )
+    target = _target_database()
+    os.environ['TEST_DB_NAME'] = target
+    os.environ['DATABASE_URL'] = (
+        f"mysql+pymysql://{os.environ.get('DB_USER', 'root')}:"
+        f"{os.environ.get('DB_PASSWORD', '')}@"
+        f"{os.environ.get('DB_HOST', 'localhost')}:"
+        f"{os.environ.get('DB_PORT', '3306')}/"
+        f"{target}")
+    print(f'[reset_and_seed] TARGET: {os.environ["DATABASE_URL"]}')
+    if not os.environ['DATABASE_URL'].endswith(target):
+        raise SystemExit('target database validation failed; aborting.')
+    _do_rebuild()
 
 
 PERMISSIONS = [
@@ -179,10 +224,36 @@ def table_counts():
             print(f'  {name}: ERROR {exc}')
 
 
-def main():
+def _do_rebuild():
+    """Perform the destructive schema reset + seed against the target DB.
+
+    ``create_app`` reads ``SQLALCHEMY_DATABASE_URI`` from the environment,
+    which main() has already pointed at the validated test database.
+    """
+    from sqlalchemy import text
+
+    from app import create_app
+    from app.extensions import db
+    import app.models  # noqa: F401  (registers all mappers / tables)
+    from app.models import (
+        User, Role, Permission, UserProfile, LoginAttempt,
+        Department, SoftwareCatalog, Category, Priority, Status,
+        Complaint, ComplaintAssignment, ComplaintStatusHistory,
+        ComplaintHistory, Comment, Attachment,
+        SLAPolicy, SLAHistory, Holiday, WorkingSchedule,
+        Notification, AuditLog, SystemSetting,
+    )
+
     app = create_app(os.environ.get('FLASK_ENV', 'development'))
     with app.app_context():
-        print(f'Database: {app.config["SQLALCHEMY_DATABASE_URI"]}')
+        # Fail-closed: confirm we are talking to the target test database.
+        target = os.environ.get('TEST_DB_NAME')
+        db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+        if target and target not in db_uri:
+            raise SystemExit(
+                f'Target {target!r} not found in {db_uri!r}; aborting.'
+            )
+        print(f'Database: {db_uri}')
         print('Dropping existing tables...')
         db.session.remove()
         existing = db.inspect(db.engine).get_table_names()

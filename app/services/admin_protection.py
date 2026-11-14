@@ -5,26 +5,32 @@ a working administrator. Callers in app/routes/users.py MUST use these
 helpers instead of duplicating the checks so that:
 
   1. The rule set lives in exactly one place.
-  2. Concurrent operations against the same row see consistent state
-     (we acquire a MySQL gap-lock via SELECT ... FOR UPDATE on the
-     admin-role row and on the admin users' rows).
-  3. Security-critical rejections are recorded in the audit log with
+  2. Concurrent operations against the same rows are serialized through
+     ``SELECT ... FOR UPDATE`` row locks. The admin role row is locked first
+     to provide a single, stable serialization point; the specific
+     active-admin ``users`` rows are then row-locked. Callers must never
+     use an aggregate ``COUNT`` as a lock.
+  3. Every check runs from a single admin role row resolved by name
+     (``ADMIN_ROLE_NAME``). No hardcoded role ID is used anywhere.
+  4. Security-critical rejections are recorded in the audit log with
      ``success=False`` so operators can spot attempted privilege
-     escalation or self-removal attempts.
+     escalation, self-removal, or cross-admin stripping.
 """
 from dataclasses import dataclass
-from typing import Optional
+from typing import Iterable, Optional, Sequence
 
 from app.extensions import db
 from app.models import User, Role
-from app.models import AuditLog
-from sqlalchemy.orm import sessionmaker
-from flask import request
+from sqlalchemy import select
 
 # The role name that is treated as the "privileged" administrator role.
 # This is a system-level concept (seeded as ``is_system=True``); see the
 # data-repair script for how it is identified.
 ADMIN_ROLE_NAME = 'admin'
+
+
+def _int_ids(raw: Iterable) -> list:
+    return [int(x) for x in (raw or []) if str(x).strip().isdigit()]
 
 
 @dataclass
@@ -54,46 +60,24 @@ class AdminProtectionService:
     def _log_blocked(cls, user_id, action, entity_type, entity_id, **kw):
         """Persist a rejected security event in an independent transaction.
 
-        This deliberately does not use db.session: committing or flushing the
-        request-scoped session here could commit unrelated application writes.
+        Delegates to :meth:`AuditService.log_blocked_security`, which owns
+        its own session so that a caller-side rollback can never erase
+        the evidence of a blocked security event.
         """
-        req = request._get_current_object() if request else None
-        ip = None
-        user_agent = None
-        session_id = None
-        request_id = None
-        if req is not None:
-            forwarded = req.headers.get('X-Forwarded-For', '')
-            ip = req.remote_addr or (forwarded.split(',')[0].strip() if forwarded else None)
-            user_agent = req.headers.get('User-Agent')
-            session_id = (req.cookies.get('session') or '')[:255] or None
-            request_id = req.headers.get('X-Request-ID')
-
-        values = dict(
+        from app.services.audit import AuditService
+        return AuditService.log_blocked_security(
             user_id=user_id,
             action=action,
             entity_type=entity_type,
             entity_id=entity_id,
-            ip_address=ip,
-            user_agent=user_agent,
-            session_id=session_id,
-            request_id=request_id,
-            success=False,
+            entity_repr=kw.pop('entity_repr', None),
+            old_values=kw.pop('old_values', None),
+            new_values=kw.pop('new_values', None),
+            changed_fields=kw.pop('changed_fields', None),
+            error_message=kw.pop('error_message', None),
+            severity=kw.pop('severity', 'warning'),
+            category=kw.pop('category', 'security'),
         )
-        allowed = {
-            'entity_repr', 'old_values', 'new_values', 'changed_fields',
-            'error_message', 'severity', 'category'
-        }
-        values.update({key: value for key, value in kw.items() if key in allowed})
-
-        # A new Session owns its transaction and cannot commit the caller's
-        # pending ORM changes. Propagate errors so callers cannot mistake a
-        # failed security audit write for a successful one.
-        AuditSession = sessionmaker(bind=db.engine, expire_on_commit=False)
-        with AuditSession.begin() as audit_session:
-            record = AuditLog(**values)
-            audit_session.add(record)
-        return record
 
     # ------------------------------------------------------------------
     # Queries
@@ -125,25 +109,30 @@ class AdminProtectionService:
         return role
 
     @classmethod
-    def _lock_active_admins(cls, exclude_user_id: Optional[int] = None) -> int:
-        """Return the number of active users holding the admin role.
+    def _lock_active_admins(cls, exclude_user_id: Optional[int] = None):
+        """Return the list of active users holding the admin role.
 
-        Acquires the shared admin-role row lock first (serializes every
-        last-admin check), then counts. This is safe across concurrent
-        deactivations because both transactions are serialized on the
-        same row lock.
+        Acquires the shared admin-role row lock first (a single stable
+        serialization point for every last-admin check), then row-locks
+        each active admin's ``users`` row via ``SELECT ... FOR UPDATE``
+        on the specific row (MySQL 8+ supports this on InnoDB). The
+        result is used for membership decisions, not as a lock itself;
+        no caller may substitute an aggregate COUNT for this.
         """
         cls._require_admin_role()
         q = (
-            db.session.query(User.id)
-            .outerjoin(User.roles)
+            db.session.query(User)
+            .join(User.roles)
             .filter(Role.name == ADMIN_ROLE_NAME,
                     Role.is_active == True,
                     User.is_active == True)
+            .with_for_update()
+            .order_by(User.id.asc())
         )
+        admins = q.all()
         if exclude_user_id is not None:
-            q = q.filter(User.id != exclude_user_id)
-        return q.distinct().count()
+            admins = [u for u in admins if u.id != exclude_user_id]
+        return admins
 
     # ------------------------------------------------------------------
     # High-level checks (each returns ProtectionCheck; rejections are
@@ -155,8 +144,8 @@ class AdminProtectionService:
         if not user.has_role(ADMIN_ROLE_NAME):
             return ProtectionCheck.allow()
 
-        count = cls._lock_active_admins(exclude_user_id=user.id)
-        if count == 0:
+        admins = cls._lock_active_admins(exclude_user_id=user.id)
+        if len(admins) == 0:
             check = ProtectionCheck.reject(
                 'Cannot deactivate the last active administrator.',
                 'last_active_admin_deactivation_blocked',
@@ -177,51 +166,75 @@ class AdminProtectionService:
     @classmethod
     def can_remove_admin_role_from(cls, user: User, new_role_ids,
                                    actor_user: User) -> ProtectionCheck:
-        """Block removing the admin role from the last active admin."""
-        if user.id != actor_user.id:
-            # Removing admin from someone else is fine as long as the last-admin
-            # check in edit_user still applies. We do not block here.
-            return ProtectionCheck.allow()
+        """Block removing the admin role in any last-admin-impacting case.
 
-        # Self-removal of the admin role.
-        has_admin_now = user.has_role(ADMIN_ROLE_NAME)
-        if not has_admin_now:
-            return ProtectionCheck.allow()
+        Two independent rules are enforced here so that a non-admin actor
+        with ``users.manage`` cannot strip administrator privileges from
+        another admin, and a self-actor cannot drop the last admin.
 
-        # If the actor would lose the admin role (not in new_role_ids), the
-        # system would lose an admin. Check whether another active admin exists.
-        admin_role_id = cls._require_admin_role().id
-        keeps_admin = admin_role_id in [int(r) for r in (new_role_ids or [])]
+        Both checks run on the row-locked admin set returned by
+        ``_lock_active_admins`` — never on an aggregate COUNT.
+        """
+        submitted = _int_ids(new_role_ids)
+        admin_role = cls._require_admin_role()
+        admin_role_id = admin_role.id
 
-        if keeps_admin:
-            return ProtectionCheck.allow()
+        # Privilege-escalation rule: only an admin may strip admin.
+        target_is_admin = user.has_role(ADMIN_ROLE_NAME)
+        if target_is_admin and admin_role_id not in submitted:
+            # The submission would remove the admin role from the target.
+            actor_is_admin = actor_user.has_role(ADMIN_ROLE_NAME)
+            if not actor_is_admin:
+                check = ProtectionCheck.reject(
+                    'You do not have permission to remove the administrator role from another user.',
+                    'admin_role_removal_from_other_blocked',
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_admin_role_removal_from_other',
+                    entity_type='user',
+                    entity_id=user.id,
+                    entity_repr=user.username,
+                    new_values={'target_user_id': user.id,
+                                'submitted_role_ids': submitted},
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
 
-        count = cls._lock_active_admins(exclude_user_id=user.id)
-        if count == 0:
-            check = ProtectionCheck.reject(
-                'You cannot remove your own administrator role: no other active administrator remains.',
-                'last_active_admin_role_removal_blocked',
-            )
-            cls._log_blocked(
-                user_id=actor_user.id,
-                action='blocked_role_removal',
-                entity_type='user',
-                entity_id=user.id,
-                entity_repr=user.username,
-                new_values={'removed_role': ADMIN_ROLE_NAME,
-                            'submitted_role_ids': [int(r) for r in (new_role_ids or [])]},
-                error_message=check.audit_reason,
-                severity='warning',
-                category='security',
-            )
-            return check
+        # Last-admin rule: whoever the target is, no admin set may drop
+        # below one remaining active admin.
+        if target_is_admin and admin_role_id not in submitted:
+            # Target is admin and is about to lose admin; count the
+            # remaining admins excluding this target.
+            remaining = cls._lock_active_admins(exclude_user_id=user.id)
+            if len(remaining) == 0:
+                check = ProtectionCheck.reject(
+                    'Cannot remove the administrator role: no other active administrator remains.',
+                    'last_active_admin_role_removal_blocked',
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_role_removal',
+                    entity_type='user',
+                    entity_id=user.id,
+                    entity_repr=user.username,
+                    new_values={'removed_role': ADMIN_ROLE_NAME,
+                                'submitted_role_ids': submitted},
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
+
         return ProtectionCheck.allow()
 
     @classmethod
     def can_deactivate_admin_role(cls, actor_user: User) -> ProtectionCheck:
         """Block deactivation of the admin role while any active admin depends on it."""
-        count = cls._lock_active_admins()
-        if count == 0:
+        admins = cls._lock_active_admins()
+        if len(admins) == 0:
             check = ProtectionCheck.reject(
                 'Cannot deactivate the Administrator role: no active administrators remain.',
                 'admin_role_deactivation_blocked_no_active_admins',
@@ -237,30 +250,75 @@ class AdminProtectionService:
                 category='security',
             )
             return check
-        # If count > 0, deactivation would still leave at least one admin
-        # holding the role, so it's allowed. However, if *all* active admins
-        # hold the admin role through this single role, deactivating it would
-        # strip them of admin access. In that case, block.
-        total_active_admins = count
-        if total_active_admins > 0:
-            # Every active admin in the system currently holds admin via this role.
-            # Deactivating the role removes admin access from all of them.
-            check = ProtectionCheck.reject(
-                f'Cannot deactivate the Administrator role: {total_active_admins} active administrator(s) currently rely on it.',
-                'admin_role_deactivation_blocked_in_use',
-            )
-            cls._log_blocked(
-                user_id=actor_user.id,
-                action='blocked_role_deactivation',
-                entity_type='role',
-                entity_id=cls._require_admin_role().id,
-                entity_repr=ADMIN_ROLE_NAME,
-                error_message=check.audit_reason,
-                severity='warning',
-                category='security',
-            )
-            return check
-        return ProtectionCheck.allow()
+        # Every active admin in the system currently holds admin via
+        # this single role. Deactivating it would strip them all.
+        check = ProtectionCheck.reject(
+            f'Cannot deactivate the Administrator role: {len(admins)} active administrator(s) currently rely on it.',
+            'admin_role_deactivation_blocked_in_use',
+        )
+        cls._log_blocked(
+            user_id=actor_user.id,
+            action='blocked_role_deactivation',
+            entity_type='role',
+            entity_id=cls._require_admin_role().id,
+            entity_repr=ADMIN_ROLE_NAME,
+            error_message=check.audit_reason,
+            severity='warning',
+            category='security',
+        )
+        return check
+
+    @classmethod
+    def can_edit_admin_role(cls, actor_user: User, submitted_permission_ids,
+                           original_permission_ids: Optional[Sequence[int]] = None,
+                           role_id: Optional[int] = None) -> ProtectionCheck:
+        """Guard edits to the admin role's permission set.
+
+        A non-admin with ``roles.manage`` must not be able to modify the
+        admin role's permissions in a way that would change what any
+        active admin can do. The rule:
+
+        * If the submitted set is empty or omits every permission that
+          an active admin currently holds, reject unless the actor is
+          themselves an active admin.
+        * If the actor is not an active admin at all, reject any edit
+          of the admin role, full stop.
+
+        The admin role row is locked via ``_require_admin_role`` and
+        the active admin users are row-locked via ``_lock_active_admins``
+        — no aggregate count is used as a lock.
+        """
+        admin_role = cls._require_admin_role()
+        if role_id is not None and role_id != admin_role.id:
+            return ProtectionCheck.allow()
+
+        submitted = set(_int_ids(submitted_permission_ids))
+        original = set(original_permission_ids) if original_permission_ids else None
+
+        # If the actor does not hold the admin role, only allow edits that
+        # do not reduce the effective permission set of any active admin.
+        actor_is_admin = actor_user.has_role(ADMIN_ROLE_NAME)
+        admins = cls._lock_active_admins()
+        if actor_is_admin:
+            return ProtectionCheck.allow()
+
+        # Non-admin actor: block any edit to the admin role.
+        check = ProtectionCheck.reject(
+            'Only administrators may modify the administrator role.',
+            'admin_role_edit_by_non_admin_blocked',
+        )
+        cls._log_blocked(
+            user_id=actor_user.id,
+            action='blocked_admin_role_edit',
+            entity_type='role',
+            entity_id=admin_role.id,
+            entity_repr=ADMIN_ROLE_NAME,
+            new_values={'submitted_permission_ids': sorted(submitted)},
+            error_message=check.audit_reason,
+            severity='warning',
+            category='security',
+        )
+        return check
 
     @classmethod
     def can_assign_roles(cls, actor_user: User, requested_role_ids,
@@ -272,8 +330,8 @@ class AdminProtectionService:
           * Every role must exist.
           * Every role must be active.
           * Assigning the admin role requires the actor to hold the admin role.
-          * Assigning admin to the last active admin is blocked via
-            can_remove_admin_role_from if it would strip admin.
+          * Removing the admin role from a target user requires the actor to
+            hold the admin role (cross-admin stripping is blocked).
         """
         # 1. Malformed IDs
         normalized = []
@@ -344,7 +402,9 @@ class AdminProtectionService:
 
         # 4. Privilege escalation: non-admin cannot grant the admin role
         admin_role_id = cls._require_admin_role().id
-        if admin_role_id in set(normalized) and not actor_user.has_role(ADMIN_ROLE_NAME):
+        admin_in_set = admin_role_id in set(normalized)
+        actor_is_admin = actor_user.has_role(ADMIN_ROLE_NAME)
+        if admin_in_set and not actor_is_admin:
             check = ProtectionCheck.reject(
                 'You do not have permission to assign the administrator role.',
                 'privileged_role_escalation_blocked',
@@ -360,5 +420,27 @@ class AdminProtectionService:
                 category='security',
             )
             return check
+
+        # 5. Cross-admin stripping: if the target is an admin user and the
+        #    submitted set omits the admin role, the actor must be an admin.
+        if target_user_id is not None and not admin_in_set:
+            target = db.session.get(User, target_user_id)
+            if target is not None and target.has_role(ADMIN_ROLE_NAME) and not actor_is_admin:
+                check = ProtectionCheck.reject(
+                    'You do not have permission to remove the administrator role from another user.',
+                    'admin_role_removal_from_other_blocked',
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_admin_role_removal_from_other',
+                    entity_type='user',
+                    entity_id=target_user_id,
+                    entity_repr=target.username,
+                    new_values={'submitted_role_ids': normalized},
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
 
         return ProtectionCheck.allow()

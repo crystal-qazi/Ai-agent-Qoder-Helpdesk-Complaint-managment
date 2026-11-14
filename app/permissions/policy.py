@@ -26,10 +26,44 @@ class PermissionPolicy:
 
     @staticmethod
     def can_edit_complaint(user, complaint=None):
-        """Check if user can edit a complaint."""
+        """Check if user can edit a complaint.
+
+        Editing is allowed when:
+
+          * the user holds ``complaints.edit`` AND (they hold
+            ``complaints.view_all`` OR the complaint is one they reported
+            or are assigned to), OR
+          * the user is the reporter of the complaint AND the complaint
+            is still in a non-terminal status (New / Assigned / In Progress /
+            Pending Info / On Hold / Reopened).
+
+        Terminal statuses (Closed, Rejected, Resolved) lock the complaint
+        against edits even for the reporter; only a privileged actor
+        (``complaints.edit`` + a visible scope) can change them.
+        """
         if not user or not user.is_active:
             return False
-        return user.has_permission('complaints.edit')
+
+        if user.has_permission('complaints.view_all') and user.has_permission('complaints.edit'):
+            return True
+
+        if complaint is None:
+            return False
+
+        # Reporter's own complaint in a non-terminal state
+        if complaint.reported_by_user_id == user.id:
+            terminal_codes = {'closed', 'rejected', 'resolved'}
+            code = getattr(complaint.status, 'code', None) if complaint.status else None
+            if code not in terminal_codes:
+                return True
+
+        # Assignee + edit permission on own assignments
+        if (complaint.assigned_to_user_id == user.id
+                and user.has_permission('complaints.edit')
+                and user.has_permission('complaints.view_my')):
+            return True
+
+        return False
 
     @staticmethod
     def can_assign_complaint(user, complaint=None):
@@ -153,29 +187,48 @@ class PermissionPolicy:
     
     @staticmethod
     def can_download_attachment(user, attachment):
-        """Check if user can download attachment."""
+        """Check if user can download attachment.
+
+        Confidential attachments (``is_confidential=True``) are restricted
+        to the uploader, the reporter, the assignee, and any user holding
+        ``attachments.download_all``.  Internal-view permission alone is
+        not sufficient for confidential files: the caller must also pass
+        the complaint visibility check (``can_view_complaint``) for the
+        same complaint the attachment belongs to.
+        """
         if not user or not user.is_active:
             return False
-        
+
+        complaint = attachment.complaint
+
         # Admin can download all
         if user.has_permission('attachments.download_all'):
             return True
-        
+
         # Uploader can download
         if attachment.user_id == user.id:
             return True
-        
+
         # Complaint participants can download
-        complaint = attachment.complaint
         if complaint.reported_by_user_id == user.id:
             return True
         if complaint.assigned_to_user_id == user.id:
             return True
+
+        # Confidential attachments: internal-comment viewers must *additionally*
+        # be able to view the specific complaint before download is granted.
+        if attachment.is_confidential:
+            if user.has_permission('comments.view_internal'):
+                if PermissionPolicy.can_view_complaint(user, complaint):
+                    return True
+            return False
+
+        # Non-confidential: internal comment viewers may download when they
+        # can view the complaint.
         if user.has_permission('comments.view_internal'):
-            # Only grant access if user can also view this specific complaint
             if PermissionPolicy.can_view_complaint(user, complaint):
                 return True
-        
+
         return False
     
     @staticmethod

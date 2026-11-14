@@ -1,5 +1,5 @@
 """Complaint management routes."""
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort, current_app
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 import os
@@ -321,8 +321,13 @@ def change_status(complaint_id):
     """Change complaint status."""
     complaint = Complaint.query.get_or_404(complaint_id)
 
-    # Basic access check — detailed permission is validated inside the service
-    if not current_user.has_permission('complaints.change_status_own') and not current_user.has_permission('complaints.change_status_all'):
+    # Access: the user must be able to view this complaint AND hold a
+    # status-change permission.  The detailed per-status check runs in
+    # ComplaintService.change_status via PermissionPolicy.can_change_status.
+    if not PermissionPolicy.can_view_complaint(current_user, complaint):
+        abort(403)
+    if not (current_user.has_permission('complaints.change_status_own')
+            or current_user.has_permission('complaints.change_status_all')):
         abort(403)
 
     data = request.form.to_dict()
@@ -357,16 +362,36 @@ def change_status(complaint_id):
 @complaints_bp.route('/<int:complaint_id>/comment', methods=['POST'])
 @login_required
 def add_comment(complaint_id):
-    """Add a comment to a complaint."""
+    """Add a comment to a complaint.
+
+    Visibility rules:
+
+      * Internal comments require ``comments.add_internal`` OR the
+        assignee role.  An internal comment on a reporter's own
+        complaint is still blocked when the reporter is the only
+        participant — the reporter cannot "leak" internal notes to
+        themselves.
+      * Reporter-visible comments require ``comments.add_reporter_visible``
+        OR reporter ownership.
+    """
     complaint = Complaint.query.get_or_404(complaint_id)
-    
+    if not PermissionPolicy.can_view_complaint(current_user, complaint):
+        abort(403)
+
     data = request.form.to_dict()
     content = data.get('content', '').strip()
     visibility = data.get('visibility', 'internal')
-    
+
     errors = validate_comment_data({'content': content, 'visibility': visibility})
-    
+
     if not errors:
+        if visibility == 'internal':
+            if not PermissionPolicy.can_add_internal_comment(current_user, complaint):
+                abort(403)
+        else:
+            if not PermissionPolicy.can_add_reporter_visible_comment(current_user, complaint):
+                abort(403)
+
         success, message = ComplaintService.add_comment(complaint, content, current_user, visibility)
         if success:
             flash(message, 'success')
@@ -375,7 +400,7 @@ def add_comment(complaint_id):
     else:
         for field, error in errors.items():
             flash(error, 'danger')
-    
+
     return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
 
 
@@ -384,37 +409,40 @@ def add_comment(complaint_id):
 def upload_attachment(complaint_id):
     """Upload an attachment to a complaint."""
     complaint = Complaint.query.get_or_404(complaint_id)
-    
+
+    # Access: reporter, assignee, or anyone with attachments.upload.
+    if not PermissionPolicy.can_view_complaint(current_user, complaint):
+        abort(403)
+    if not PermissionPolicy.can_upload_attachment(current_user, complaint):
+        abort(403)
+
     if 'file' not in request.files:
         flash('No file selected.', 'danger')
         return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
-    
+
     file = request.files['file']
     description = request.form.get('description', '').strip()
     is_confidential = 'is_confidential' in request.form
-    
+
     errors, file_info = validate_file_upload(file)
-    
+
     if not errors:
         # Generate stored filename
         stored_filename = generate_stored_filename(file_info['original_filename'])
-        
-        # Ensure upload directory exists
-        # Absolute path: send_file resolves relative paths against the app package, not the CWD
+
+        # Ensure upload directory exists (absolute path)
         upload_dir = os.path.abspath(os.path.join(current_app.config['UPLOAD_FOLDER'], 'complaints', str(complaint_id)))
         os.makedirs(upload_dir, exist_ok=True)
-        
+
         storage_path = os.path.join(upload_dir, stored_filename)
-        
-        # Save file
+
         file.seek(0)
         file.save(storage_path)
-        
-        # Update file_info with storage details
+
         file_info['original_filename'] = file.filename
         file_info['stored_filename'] = stored_filename
         file_info['storage_path'] = storage_path
-        
+
         success, message = ComplaintService.add_attachment(
             complaint, file_info, current_user, description, is_confidential
         )
@@ -428,7 +456,7 @@ def upload_attachment(complaint_id):
     else:
         for field, error in errors.items():
             flash(error, 'danger')
-    
+
     return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
 
 
@@ -519,8 +547,3 @@ def api_search():
         })
     
     return jsonify(data)
-
-
-# Import needed for query
-from app.extensions import db
-from flask import current_app

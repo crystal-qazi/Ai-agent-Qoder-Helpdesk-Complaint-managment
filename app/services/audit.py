@@ -1,38 +1,92 @@
 """Audit logging service."""
+import json
+import re
 from datetime import datetime
 from flask import request
 from app.extensions import db
 from app.models import AuditLog
 
+# Fields whose values are redacted before being written to the audit
+# log.  The pattern matches a dict key (case-insensitive) that signals
+# a secret or PII.
+_REDACT_KEY_RE = re.compile(
+    r'(password|passwd|secret|token|session|csrf|api[_-]?key|private|'
+    r'signature|credential|patient|mrn|ssn|dob|email)',
+    re.IGNORECASE,
+)
+_REDACT_VALUE_RE = re.compile(
+    r'(sk_live_\w+|sk_test_\w+|Bearer\s+\w+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)',
+)
+
+
+def _redact_dict(value):
+    """Return a deep copy of ``value`` with sensitive fields redacted.
+
+    The result is a plain JSON-serializable structure.  Values that
+    match the secret/pattern shape are replaced with ``'<redacted>'``.
+    Keys that look like secret/PII fields are also replaced.
+    """
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        out = {}
+        for k, v in value.items():
+            if _REDACT_KEY_RE.search(str(k)):
+                out[k] = '<redacted>'
+            else:
+                out[k] = _redact_dict(v)
+        return out
+    if isinstance(value, (list, tuple)):
+        return [_redact_dict(item) for item in value]
+    if isinstance(value, str):
+        if _REDACT_VALUE_RE.search(value):
+            return '<redacted>'
+        return value
+    return value
+
 
 class AuditService:
-    """Service for audit logging."""
-    
+    """Service for audit logging.
+
+    Business operations commit audit rows inside the caller's
+    transaction (atomic: an undo also undoes the audit row).
+    Security-critical rejections are recorded through
+    ``_log_blocked_security`` in an independent transaction so that a
+    caller-side rollback cannot erase the evidence of a blocked
+    operation.
+    """
+
     @staticmethod
     def log_action(user_id, action, entity_type=None, entity_id=None, entity_repr=None,
                    old_values=None, new_values=None, changed_fields=None, success=True,
                    error_message=None, severity='info', category='general'):
-        """Log an audit action."""
+        """Log an audit action in the caller's transaction.
+
+        Passwords, tokens, and other secret-shaped fields in
+        ``old_values`` / ``new_values`` are redacted before the row is
+        written.
+        """
         ip = None
         ua = None
         session_id = None
         request_id = None
-        
+
         if request:
-            ip = request.remote_addr or request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
-            ua = request.headers.get('User-Agent')
+            from app.security_utils import client_ip, user_agent_string
+            ip = client_ip()
+            ua = user_agent_string()
             session_id = (request.cookies.get('session') or '')[:255] or None
             request_id = request.headers.get('X-Request-ID')
-        
+
         log = AuditLog(
             user_id=user_id,
             action=action,
             entity_type=entity_type,
             entity_id=entity_id,
             entity_repr=entity_repr,
-            old_values=old_values,
-            new_values=new_values,
-            changed_fields=changed_fields,
+            old_values=_redact_dict(old_values),
+            new_values=_redact_dict(new_values),
+            changed_fields=_redact_dict(changed_fields),
             success=success,
             error_message=error_message,
             severity=severity,
@@ -44,6 +98,51 @@ class AuditService:
         )
         db.session.add(log)
         return log
+
+    @staticmethod
+    def log_blocked_security(user_id, action, entity_type=None, entity_id=None,
+                             entity_repr=None, old_values=None, new_values=None,
+                             changed_fields=None, error_message=None,
+                             severity='warning', category='security'):
+        """Persist a rejected security event in an independent transaction.
+
+        Uses a fresh session bound directly to the engine so a
+        caller-side rollback or ``flush`` cannot erase the row.  Redaction
+        is applied the same way as :meth:`log_action`.
+        """
+        from sqlalchemy.orm import sessionmaker
+        from app.extensions import db as _db
+        req = request._get_current_object() if request else None
+        ip = ua = session_id = request_id = None
+        if req is not None:
+            from app.security_utils import client_ip, user_agent_string
+            ip = client_ip()
+            ua = user_agent_string()
+            session_id = (req.cookies.get('session') or '')[:255] or None
+            request_id = req.headers.get('X-Request-ID')
+
+        record = AuditLog(
+            user_id=user_id,
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            entity_repr=entity_repr,
+            old_values=_redact_dict(old_values),
+            new_values=_redact_dict(new_values),
+            changed_fields=_redact_dict(changed_fields),
+            success=False,
+            error_message=error_message,
+            severity=severity,
+            category=category,
+            ip_address=ip,
+            user_agent=ua,
+            session_id=session_id,
+            request_id=request_id,
+        )
+        AuditSession = sessionmaker(bind=_db.engine, expire_on_commit=False)
+        with AuditSession.begin() as audit_session:
+            audit_session.add(record)
+        return record
     
     @staticmethod
     def log_login(user_id, username, success, failure_reason=None, ip=None, ua=None):

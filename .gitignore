@@ -19,15 +19,20 @@ instance/
 .env
 .env.local
 .env.production
+.env.mysql
+.env.development
+.env.test
+.env.testing
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
 
-# Migrations
-migrations/versions/*.py
-!migrations/versions/__init__.py
+# Migrations: keep the tracked revision files; ignore Alembic scaffolding.
+migrations/versions/__pycache__/
+migrations/alembic.ini
+!migrations/versions/*.py
 
 # Logs
 logs/

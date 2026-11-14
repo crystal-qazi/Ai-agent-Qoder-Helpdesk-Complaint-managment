@@ -98,6 +98,7 @@ class User(BaseModel, UserMixin):
     is_locked = db.Column(db.Boolean, default=False, nullable=False)
     locked_at = db.Column(db.DateTime, nullable=True)
     lock_reason = db.Column(db.Text, nullable=True)
+    locked_until = db.Column(db.DateTime, nullable=True)
     last_login_at = db.Column(db.DateTime, nullable=True)
     last_login_ip = db.Column(db.String(45), nullable=True)
     failed_login_attempts = db.Column(db.Integer, default=0, nullable=False)
@@ -205,19 +206,43 @@ class User(BaseModel, UserMixin):
         db.session.add(self)
     
     def record_failed_login(self, max_attempts=5, lockout_duration=900):
-        """Record failed login attempt and lock if necessary."""
+        """Record failed login attempt and lock the account for a bounded period.
+
+        ``lockout_duration`` is in seconds.  The lock is *temporary*:
+        ``locked_until`` is set so the user can retry once the window
+        expires, without waiting for an administrator to intervene.
+        """
+        from datetime import timedelta
+
+        now = datetime.utcnow()
         self.failed_login_attempts += 1
-        self.last_failed_login_at = datetime.utcnow()
+        self.last_failed_login_at = now
         if self.failed_login_attempts >= max_attempts:
             self.is_locked = True
-            self.locked_at = datetime.utcnow()
-            self.lock_reason = f'Exceeded {max_attempts} failed login attempts'
+            self.locked_at = now
+            self.locked_until = now + timedelta(seconds=int(lockout_duration or 0))
+            self.lock_reason = (
+                f'Exceeded {max_attempts} failed login attempts; '
+                f'locked until {self.locked_until.isoformat()}')
         db.session.add(self)
-    
+
+    def auto_unlock_if_expired(self):
+        """Clear the lock flag if ``locked_until`` has passed.
+
+        Call this on every login attempt so a temporarily-locked user can
+        come back after the window without an administrator unlocking the
+        account by hand.
+        """
+        if not self.is_locked:
+            return
+        if self.locked_until is not None and datetime.utcnow() >= self.locked_until:
+            self.unlock()
+
     def unlock(self):
         """Unlock user account."""
         self.is_locked = False
         self.locked_at = None
+        self.locked_until = None
         self.lock_reason = None
         self.failed_login_attempts = 0
         self.last_failed_login_at = None

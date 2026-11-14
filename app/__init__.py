@@ -1,5 +1,5 @@
 from flask import Flask
-from app.config import config
+from app.config import config, ProductionConfig, validate_production_env
 from app.extensions import init_extensions
 import os
 
@@ -8,10 +8,16 @@ def create_app(config_name=None):
     """Application factory pattern."""
     if config_name is None:
         config_name = os.environ.get('FLASK_ENV', 'default')
-    
+
     app = Flask(__name__)
     app.config.from_object(config[config_name])
-    
+
+    # Fail-fast on production misconfigurations (weak SECRET_KEY, root
+    # database credentials).  Dev/test configs keep the lenient defaults
+    # so a fresh clone boots without a .env.
+    if isinstance(config[config_name], ProductionConfig):
+        validate_production_env(config[config_name])
+
     # Initialize extensions
     init_extensions(app)
     
