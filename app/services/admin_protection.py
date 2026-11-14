@@ -5,11 +5,10 @@ a working administrator. Callers in app/routes/users.py MUST use these
 helpers instead of duplicating the checks so that:
 
   1. The rule set lives in exactly one place.
-  2. Concurrent operations against the same rows are serialized through
-     ``SELECT ... FOR UPDATE`` row locks. The admin role row is locked first
-     to provide a single, stable serialization point; the specific
-     active-admin ``users`` rows are then row-locked. Callers must never
-     use an aggregate ``COUNT`` as a lock.
+  2. Concurrent administrator-membership changes are serialized through
+     one stable ``SELECT ... FOR UPDATE`` lock on the admin role row.
+     Membership rows are read without user-row locks so independent audit
+     inserts cannot deadlock on the audit log's user foreign key.
   3. Every check runs from a single admin role row resolved by name
      (``ADMIN_ROLE_NAME``). No hardcoded role ID is used anywhere.
   4. Security-critical rejections are recorded in the audit log with
@@ -138,7 +137,12 @@ class AdminProtectionService:
     # ------------------------------------------------------------------
     @classmethod
     def can_deactivate_user(cls, user: User, actor_user: User) -> ProtectionCheck:
-        """Block deactivation of the last active admin user."""
+        """Serialize deactivation against concurrent administrator assignment."""
+        # Acquire the shared role-row lock before checking membership.  This
+        # matters even when the target is not currently an admin: another
+        # request must not concurrently grant admin while this request
+        # deactivates the same account.
+        cls._require_admin_role()
         if not user.has_role(ADMIN_ROLE_NAME):
             return ProtectionCheck.allow()
 
@@ -170,7 +174,7 @@ class AdminProtectionService:
         with ``users.manage`` cannot strip administrator privileges from
         another admin, and a self-actor cannot drop the last admin.
 
-        Both checks run on the row-locked admin set returned by
+        Both checks run under the shared admin-role row lock returned by
         ``_lock_active_admins`` — never on an aggregate COUNT.
         """
         submitted = _int_ids(new_role_ids)
@@ -283,8 +287,7 @@ class AdminProtectionService:
           of the admin role, full stop.
 
         The admin role row is locked via ``_require_admin_role`` and
-        the active admin users are row-locked via ``_lock_active_admins``
-        — no aggregate count is used as a lock.
+        ``_lock_active_admins`` — no aggregate count is used as a lock.
         """
         admin_role = cls._require_admin_role()
         if role_id is not None and role_id != admin_role.id:
