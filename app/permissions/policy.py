@@ -12,6 +12,15 @@ class PermissionPolicy:
         if not user or not user.is_active:
             return False
 
+        is_participant = (
+            complaint.reported_by_user_id == user.id
+            or complaint.assigned_to_user_id == user.id
+        )
+        if complaint.is_confidential and not is_participant:
+            if not user.has_permission('complaints.view_confidential'):
+                return False
+            return True
+
         if user.has_permission('complaints.view_all'):
             return True
 
@@ -201,7 +210,11 @@ class PermissionPolicy:
 
         complaint = attachment.complaint
 
-        # Admin can download all
+        # Attachment-wide permissions never bypass complaint visibility.
+        if not PermissionPolicy.can_view_complaint(user, complaint):
+            return False
+
+        # Admin can download all visible complaints
         if user.has_permission('attachments.download_all'):
             return True
 

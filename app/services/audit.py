@@ -1,4 +1,5 @@
 """Audit logging service."""
+import hashlib
 import json
 import re
 from datetime import datetime
@@ -75,7 +76,8 @@ class AuditService:
             from app.security_utils import client_ip, user_agent_string
             ip = client_ip()
             ua = user_agent_string()
-            session_id = (request.cookies.get('session') or '')[:255] or None
+            cookie_value = request.cookies.get('session') or ''
+            session_id = hashlib.sha256(cookie_value.encode('utf-8')).hexdigest() if cookie_value else None
             request_id = request.headers.get('X-Request-ID')
 
         log = AuditLog(
@@ -118,7 +120,8 @@ class AuditService:
             from app.security_utils import client_ip, user_agent_string
             ip = client_ip()
             ua = user_agent_string()
-            session_id = (req.cookies.get('session') or '')[:255] or None
+            cookie_value = req.cookies.get('session') or ''
+            session_id = hashlib.sha256(cookie_value.encode('utf-8')).hexdigest() if cookie_value else None
             request_id = req.headers.get('X-Request-ID')
 
         record = AuditLog(

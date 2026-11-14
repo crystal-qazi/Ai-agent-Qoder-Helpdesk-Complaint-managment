@@ -2,7 +2,7 @@
 
 Date: 2026-11-14
 Branch: development
-HEAD: 9fd5458 (parent of the hardening commit)
+HEAD: 38fdec55e9d7131871bb1205ce102181659bda2c (hardening baseline; follow-up source repair commit follows)
 
 ## Executive summary
 
@@ -291,3 +291,24 @@ must be met before promoting to production:
 
 None of these conditions have been satisfied on this host yet, so
 the release is **not** cleared for production on its own.
+
+
+## Follow-up source repairs
+
+The follow-up repair commit additionally corrects production-config detection,
+replaces raw audit session-cookie storage with a SHA-256 fingerprint, enforces
+confidential complaint visibility before broad view permissions, prevents
+attachment-wide download permissions from bypassing complaint visibility,
+and protects core administrator permissions from removal.
+
+It also fixes the lockout migration downgrade, moves initial-schema foreign
+keys until after all tables exist (including forward and cyclic references),
+adds the confidential-view permission to the canonical test seed, hardens
+destructive reset scripts to require a local disposable database and
+non-root credentials, verifies the connected database identity, hides
+credentials in output, and prevents the legacy SQLite setup script from
+deleting an existing file.
+
+These are source-level repairs only. The full test suite, fresh MySQL
+migration, rollback, and concurrency tests have not been executed for this
+follow-up commit and must pass before production deployment.

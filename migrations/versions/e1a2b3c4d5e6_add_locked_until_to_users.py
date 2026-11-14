@@ -21,4 +21,4 @@ def upgrade():
 
 
 def downgrade():
-    op.drop_column('users', sa.Column('locked_until'))
+    op.drop_column('users', 'locked_until')

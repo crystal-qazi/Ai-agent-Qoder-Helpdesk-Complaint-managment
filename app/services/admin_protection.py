@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Iterable, Optional, Sequence
 
 from app.extensions import db
-from app.models import User, Role
+from app.models import User, Role, Permission
 from sqlalchemy import select
 
 # The role name that is treated as the "privileged" administrator role.
@@ -300,6 +300,40 @@ class AdminProtectionService:
         actor_is_admin = actor_user.has_role(ADMIN_ROLE_NAME)
         admins = cls._lock_active_admins()
         if actor_is_admin:
+            protected_names = {
+                'users.manage', 'roles.manage', 'permissions.manage',
+                'settings.manage', 'config.manage', 'audit.view',
+            }
+            protected_permissions = Permission.query.filter(
+                Permission.name.in_(protected_names)
+            ).all()
+            protected_by_name = {permission.name: permission.id for permission in protected_permissions}
+            if protected_names - set(protected_by_name):
+                return ProtectionCheck.reject(
+                    'Administrator permissions cannot be changed because required system permissions are missing.',
+                    'admin_role_protected_permissions_missing',
+                )
+            missing_ids = set(protected_by_name.values()) - submitted
+            if missing_ids:
+                check = ProtectionCheck.reject(
+                    'The Administrator role must retain all protected system-management permissions.',
+                    'admin_role_required_permissions_removal_blocked',
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_admin_role_permission_removal',
+                    entity_type='role',
+                    entity_id=admin_role.id,
+                    entity_repr=ADMIN_ROLE_NAME,
+                    new_values={'removed_protected_permissions': sorted(
+                        name for name, permission_id in protected_by_name.items()
+                        if permission_id in missing_ids
+                    )},
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
             return ProtectionCheck.allow()
 
         # Non-admin actor: block any edit to the admin role.

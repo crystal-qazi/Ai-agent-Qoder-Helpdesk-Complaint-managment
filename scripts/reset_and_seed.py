@@ -58,17 +58,22 @@ def main():
             'refusing to run: set TARGET_TEST_DB=1 to confirm this is a '
             'test-only run against a helpdesk_<identifier>_test database.'
         )
+    if os.environ.get('FLASK_ENV', '').lower() == 'production':
+        raise SystemExit('refusing to run reset_and_seed.py in production.')
     target = _target_database()
+    host = os.environ.get('DB_HOST', 'localhost').strip().lower()
+    if host not in {'localhost', '127.0.0.1', '::1'}:
+        raise SystemExit('refusing destructive reset on a non-local database host.')
+    db_user = os.environ.get('DB_USER', '').strip()
+    db_password = os.environ.get('DB_PASSWORD', '')
+    if not db_user or db_user.lower() == 'root' or not db_password:
+        raise SystemExit('Set a non-root DB_USER and non-empty DB_PASSWORD for the disposable test database.')
+    from sqlalchemy.engine import URL
+    database_url = URL.create('mysql+pymysql', username=db_user,
+        password=db_password, host=host,
+        port=int(os.environ.get('DB_PORT', '3306')), database=target)
     os.environ['TEST_DB_NAME'] = target
-    os.environ['DATABASE_URL'] = (
-        f"mysql+pymysql://{os.environ.get('DB_USER', 'root')}:"
-        f"{os.environ.get('DB_PASSWORD', '')}@"
-        f"{os.environ.get('DB_HOST', 'localhost')}:"
-        f"{os.environ.get('DB_PORT', '3306')}/"
-        f"{target}")
-    print(f'[reset_and_seed] TARGET: {os.environ["DATABASE_URL"]}')
-    if not os.environ['DATABASE_URL'].endswith(target):
-        raise SystemExit('target database validation failed; aborting.')
+    os.environ['DATABASE_URL'] = database_url.render_as_string(hide_password=False)
     _do_rebuild()
 
 
@@ -78,6 +83,7 @@ PERMISSIONS = [
     # complaints — exactly 9 permissions per spec
     ('complaints.create', 'Create Complaint', 'complaints', 'create'),
     ('complaints.view_all', 'View All Complaints', 'complaints', 'view_all'),
+    ('complaints.view_confidential', 'View Confidential Complaints', 'complaints', 'view_confidential')
     ('complaints.view_my', 'View My Complaints', 'complaints', 'view_my'),
     ('complaints.edit', 'Edit Complaint', 'complaints', 'edit'),
     ('complaints.assign', 'Assign Complaint', 'complaints', 'assign'),
@@ -248,12 +254,15 @@ def _do_rebuild():
     with app.app_context():
         # Fail-closed: confirm we are talking to the target test database.
         target = os.environ.get('TEST_DB_NAME')
-        db_uri = app.config['SQLALCHEMY_DATABASE_URI']
-        if target and target not in db_uri:
-            raise SystemExit(
-                f'Target {target!r} not found in {db_uri!r}; aborting.'
-            )
-        print(f'Database: {db_uri}')
+        with db.engine.connect() as connection:
+            actual_database, actual_host = connection.execute(
+                text('SELECT DATABASE(), @@hostname')
+            ).one()
+        if not target or actual_database != target:
+            raise SystemExit('Connected database identity does not match TEST_DB_NAME; aborting.')
+        if os.environ.get('DB_HOST', 'localhost').strip().lower() not in {'localhost', '127.0.0.1', '::1'}:
+            raise SystemExit('Destructive reset is restricted to a local database host.')
+        print(f'Database: {actual_database} on {actual_host} (credentials hidden)')
         print('Dropping existing tables...')
         db.session.remove()
         existing = db.inspect(db.engine).get_table_names()

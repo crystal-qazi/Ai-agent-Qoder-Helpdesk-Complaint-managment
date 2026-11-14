@@ -23,9 +23,11 @@ def create_tables():
             'rebuild a production schema. Use scripts/reset_and_seed.py '
             'against a dedicated helpdesk_*_test database instead.'
         )
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    if os.environ.get('TARGET_TEST_DB') != '1' or os.environ.get('ALLOW_SQLITE_RESET') != '1':
+        raise SystemExit('Refusing SQLite setup without TARGET_TEST_DB=1 and ALLOW_SQLITE_RESET=1.')
     if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
+        raise SystemExit(f'Refusing to delete existing SQLite data at {DB_PATH}; back it up or move it manually.')
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()

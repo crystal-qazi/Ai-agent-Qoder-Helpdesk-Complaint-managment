@@ -29,8 +29,14 @@ from werkzeug.security import generate_password_hash
 # in production deployments.
 _host = os.environ.get('DB_HOST', 'localhost')
 _port = int(os.environ.get('DB_PORT', '3306'))
-_user = os.environ.get('DB_USER', 'root')
-_password = os.environ.get('DB_PASSWORD', 'root')
+_user = os.environ.get('DB_USER', '').strip()
+_password = os.environ.get('DB_PASSWORD', '')
+if not _user or _user.lower() == 'root' or not _password:
+    print('[seed_mysql] set a non-root DB_USER and non-empty DB_PASSWORD; refusing unsafe defaults.')
+    sys.exit(1)
+if _host.strip().lower() not in {'localhost', '127.0.0.1', '::1'}:
+    print('[seed_mysql] destructive seed is restricted to a local database host.')
+    sys.exit(1)
 conn = pymysql.connect(host=_host, port=_port, user=_user,
                        password=_password, database=_TEST_DB)
 c = conn.cursor()
