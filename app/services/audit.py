@@ -111,6 +111,14 @@ class AuditService:
         Uses a fresh session bound directly to the engine so a
         caller-side rollback or ``flush`` cannot erase the row.  Redaction
         is applied the same way as :meth:`log_action`.
+
+        Note: when the caller holds ``FOR UPDATE`` row locks on rows that
+        the audit table's foreign keys reference (e.g. the users table),
+        this independent transaction will deadlock.  The caller is
+        responsible for releasing those locks (i.e. calling ``db.session.rollback()``
+        or committing) before calling this method, or for catching the
+        resulting ``OperationalError`` and logging to the application log
+        instead.
         """
         from sqlalchemy.orm import sessionmaker
         from app.extensions import db as _db
@@ -143,8 +151,24 @@ class AuditService:
             request_id=request_id,
         )
         AuditSession = sessionmaker(bind=_db.engine, expire_on_commit=False)
-        with AuditSession.begin() as audit_session:
-            audit_session.add(record)
+        try:
+            with AuditSession.begin() as audit_session:
+                audit_session.add(record)
+        except Exception:
+            # Fail open: if the independent session deadlocks (caller holds
+            # FOR UPDATE locks on referenced rows), log to stderr so the
+            # operator is aware without blocking the security check.
+            import sys
+            import traceback
+            print(
+                f'[audit] Failed to persist blocked security event '
+                f'{action!r} (entity_type={entity_type}, entity_id={entity_id}). '
+                f'Caller may hold row locks that conflict with this transaction.\n'
+                f'{traceback.format_exc()}',
+                file=sys.stderr,
+            )
+            _db.session.rollback()
+            return record
         return record
     
     @staticmethod

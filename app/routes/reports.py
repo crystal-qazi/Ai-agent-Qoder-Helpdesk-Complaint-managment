@@ -181,7 +181,8 @@ def preset_report(report_type):
     filters = {}
     
     if report_type == 'daily':
-        filters['date_from'] = datetime.utcnow().date()
+        from datetime import timedelta
+        filters['date_from'] = datetime.utcnow() - timedelta(days=1)
     elif report_type == 'weekly':
         from datetime import timedelta
         filters['date_from'] = datetime.utcnow() - timedelta(days=7)

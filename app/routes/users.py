@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
 from app.extensions import db
-from app.models import User, Role, Department, UserProfile
+from app.models import User, Role, Department, UserProfile, Permission
 from app.validators.user import validate_user_data, validate_password_strength
 from app.permissions.decorators import can_manage_users, can_manage_roles
 from app.services.audit import AuditService
@@ -619,5 +619,4 @@ def list_permissions():
 
 
 # Import needed
-from app.models import Permission
 from app.extensions import db

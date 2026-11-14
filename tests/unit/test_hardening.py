@@ -142,13 +142,30 @@ class TestAdminProtection(unittest.TestCase):
         admin_role = self._admin_role()
         actor = _fake_user(id=1, has_role=True)
 
+        # Provide the protected permission rows the new guard requires.
+        protected_perms = []
+        for i, name in enumerate(
+            ['users.manage', 'roles.manage', 'permissions.manage',
+             'settings.manage', 'config.manage', 'audit.view'],
+            start=100,
+        ):
+            p = MagicMock()
+            p.name = name
+            p.id = i
+            protected_perms.append(p)
+
         with self._patch_service(admin_role=admin_role,
-                                 lock_active_admins=[MagicMock()]):
+                                 lock_active_admins=[MagicMock()]), \
+             unittest.mock.patch('app.services.admin_protection.Permission') as MockPerm:
+            MockPerm.query.filter.return_value.all.return_value = protected_perms
             check = AdminProtectionService.can_edit_admin_role(
-                actor, [7, 8], original_permission_ids=[5, 6], role_id=1,
+                actor,
+                [100, 101, 102, 103, 104, 105],  # all protected perms
+                original_permission_ids=[5, 6], role_id=1,
             )
         self.assertTrue(check.ok,
-                        'active admin may edit the admin role')
+                        'active admin may edit the admin role when all '
+                        'protected permissions are retained')
 
     # ------------------------------------------------------------------
     def _patch_service(self, admin_role, lock_active_admins):

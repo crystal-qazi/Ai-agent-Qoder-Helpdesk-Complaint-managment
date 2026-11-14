@@ -1588,7 +1588,7 @@ def delete_working_schedule(schedule_id):
     schedule = WorkingSchedule.query.get_or_404(schedule_id)
     
     # Check if schedule is used in SLA policies
-    if schedule.sla_policies.count() > 0:
+    if SLAPolicy.query.filter_by(working_schedule_id=schedule.id, is_active=True).count() > 0:
         flash('Cannot delete schedule used in SLA policies. Deactivate instead.', 'danger')
         return redirect(url_for('admin.list_working_schedules'))
     

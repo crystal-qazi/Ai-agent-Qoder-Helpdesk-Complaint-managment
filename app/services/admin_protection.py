@@ -63,7 +63,19 @@ class AdminProtectionService:
         Delegates to :meth:`AuditService.log_blocked_security`, which owns
         its own session so that a caller-side rollback can never erase
         the evidence of a blocked security event.
+
+        Before writing the audit row we release any row locks the caller
+        may be holding (e.g. ``FOR UPDATE`` locks from
+        ``_lock_active_admins``) so the independent audit session does
+        not deadlock on the referenced ``users`` / ``roles`` rows.
         """
+        from app.extensions import db
+        # Release any open transaction with row locks before the
+        # independent audit session attempts to insert a row that
+        # has foreign keys into the locked tables.
+        session = db.session()
+        if session.in_transaction():
+            session.rollback()
         from app.services.audit import AuditService
         return AuditService.log_blocked_security(
             user_id=user_id,

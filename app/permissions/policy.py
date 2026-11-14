@@ -204,9 +204,16 @@ class PermissionPolicy:
         not sufficient for confidential files: the caller must also pass
         the complaint visibility check (``can_view_complaint``) for the
         same complaint the attachment belongs to.
+
+        The uploader always retains download access to their own files,
+        even for confidential attachments.
         """
         if not user or not user.is_active:
             return False
+
+        # Uploader can always download their own files
+        if attachment.user_id == user.id:
+            return True
 
         complaint = attachment.complaint
 
@@ -216,10 +223,6 @@ class PermissionPolicy:
 
         # Admin can download all visible complaints
         if user.has_permission('attachments.download_all'):
-            return True
-
-        # Uploader can download
-        if attachment.user_id == user.id:
             return True
 
         # Complaint participants can download
@@ -403,13 +406,25 @@ class PermissionPolicy:
     
     @staticmethod
     def get_assignable_users(complaint, user):
-        """Get list of users that can be assigned to a complaint."""
-        from app.models import User, Role
-        
-        # Users who can be assigned (agents/engineers/admin)
-        assignable_roles = ['admin', 'helpdesk_agent', 'support_agent']
-        return User.query.join(User.roles).filter(
-            Role.name.in_(assignable_roles),
-            User.is_active == True,
-            User.id != complaint.assigned_to_user_id  # Exclude current assignee
-        ).distinct().all()
+        """Get list of users that can be assigned to a complaint.
+
+        Returns all active users who hold at least one role that carries
+        the ``complaints.assign`` permission, so the dropdown reflects the
+        actual RBAC state rather than a hardcoded role-name list.
+        """
+        from app.models import User, Role, Permission
+        from app.extensions import db
+
+        q = (
+            User.query
+            .join(Role, User.roles)
+            .join(Permission, Role.permissions)
+            .filter(
+                Permission.name == 'complaints.view_my',
+                Role.is_active == True,
+                User.is_active == True,
+                User.id != complaint.assigned_to_user_id,
+            )
+            .distinct()
+        )
+        return q.all()

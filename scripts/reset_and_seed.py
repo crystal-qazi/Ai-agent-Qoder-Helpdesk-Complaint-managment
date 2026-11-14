@@ -83,7 +83,7 @@ PERMISSIONS = [
     # complaints — exactly 9 permissions per spec
     ('complaints.create', 'Create Complaint', 'complaints', 'create'),
     ('complaints.view_all', 'View All Complaints', 'complaints', 'view_all'),
-    ('complaints.view_confidential', 'View Confidential Complaints', 'complaints', 'view_confidential')
+    ('complaints.view_confidential', 'View Confidential Complaints', 'complaints', 'view_confidential'),
     ('complaints.view_my', 'View My Complaints', 'complaints', 'view_my'),
     ('complaints.edit', 'Edit Complaint', 'complaints', 'edit'),
     ('complaints.assign', 'Assign Complaint', 'complaints', 'assign'),

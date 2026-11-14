@@ -44,9 +44,17 @@ def view_notification(notification_id):
         notification.mark_as_read()
         db.session.commit()
     
-    # Redirect to action URL if present, otherwise show notification detail
+    # Redirect to action URL if present, otherwise show notification detail.
+    # Only allow internal (same-origin) URLs to prevent open-redirect.
     if notification.action_url:
-        return redirect(notification.action_url)
+        from urllib.parse import urlparse
+        parsed = urlparse(notification.action_url)
+        is_safe = (
+            (not parsed.scheme and not parsed.netloc)          # relative path
+            or (parsed.scheme in ('http', 'https') and parsed.netloc == request.host)
+        )
+        if is_safe:
+            return redirect(notification.action_url)
     
     return render_template('notifications/detail.html', notification=notification)
 
