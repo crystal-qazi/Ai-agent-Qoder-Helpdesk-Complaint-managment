@@ -58,24 +58,13 @@ class AdminProtectionService:
     # ------------------------------------------------------------------
     @classmethod
     def _log_blocked(cls, user_id, action, entity_type, entity_id, **kw):
-        """Persist a rejected security event in an independent transaction.
+        """Write a blocked event independently without touching request work.
 
-        Delegates to :meth:`AuditService.log_blocked_security`, which owns
-        its own session so that a caller-side rollback can never erase
-        the evidence of a blocked security event.
-
-        Before writing the audit row we release any row locks the caller
-        may be holding (e.g. ``FOR UPDATE`` locks from
-        ``_lock_active_admins``) so the independent audit session does
-        not deadlock on the referenced ``users`` / ``roles`` rows.
+        The shared admin-role row is the serialization lock. Active admin
+        membership is read without user-row FOR UPDATE locks, avoiding a
+        foreign-key deadlock when the independent audit transaction records
+        the actor.
         """
-        from app.extensions import db
-        # Release any open transaction with row locks before the
-        # independent audit session attempts to insert a row that
-        # has foreign keys into the locked tables.
-        session = db.session()
-        if session.in_transaction():
-            session.rollback()
         from app.services.audit import AuditService
         return AuditService.log_blocked_security(
             user_id=user_id,
@@ -122,14 +111,12 @@ class AdminProtectionService:
 
     @classmethod
     def _lock_active_admins(cls, exclude_user_id: Optional[int] = None):
-        """Return the list of active users holding the admin role.
+        """Return active administrators under the shared admin-role lock.
 
-        Acquires the shared admin-role row lock first (a single stable
-        serialization point for every last-admin check), then row-locks
-        each active admin's ``users`` row via ``SELECT ... FOR UPDATE``
-        on the specific row (MySQL 8+ supports this on InnoDB). The
-        result is used for membership decisions, not as a lock itself;
-        no caller may substitute an aggregate COUNT for this.
+        Every operation that changes administrator membership must acquire
+        this same role-row lock and hold it through commit. User rows are
+        read without additional locks so independent security auditing
+        cannot conflict with the audit row's user foreign key.
         """
         cls._require_admin_role()
         q = (
@@ -138,7 +125,6 @@ class AdminProtectionService:
             .filter(Role.name == ADMIN_ROLE_NAME,
                     Role.is_active == True,
                     User.is_active == True)
-            .with_for_update()
             .order_by(User.id.asc())
         )
         admins = q.all()

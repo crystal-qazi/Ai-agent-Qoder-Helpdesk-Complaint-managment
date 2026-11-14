@@ -112,13 +112,9 @@ class AuditService:
         caller-side rollback or ``flush`` cannot erase the row.  Redaction
         is applied the same way as :meth:`log_action`.
 
-        Note: when the caller holds ``FOR UPDATE`` row locks on rows that
-        the audit table's foreign keys reference (e.g. the users table),
-        this independent transaction will deadlock.  The caller is
-        responsible for releasing those locks (i.e. calling ``db.session.rollback()``
-        or committing) before calling this method, or for catching the
-        resulting ``OperationalError`` and logging to the application log
-        instead.
+        This method never commits, rolls back, or otherwise mutates the
+        request-scoped SQLAlchemy session. Callers must avoid holding
+        conflicting locks on referenced rows while invoking it.
         """
         from sqlalchemy.orm import sessionmaker
         from app.extensions import db as _db
@@ -155,9 +151,8 @@ class AuditService:
             with AuditSession.begin() as audit_session:
                 audit_session.add(record)
         except Exception:
-            # Fail open: if the independent session deadlocks (caller holds
-            # FOR UPDATE locks on referenced rows), log to stderr so the
-            # operator is aware without blocking the security check.
+            # The audit transaction is independent. Never roll back the
+            # request-scoped session here: it may contain unrelated work.
             import sys
             import traceback
             print(
@@ -167,7 +162,6 @@ class AuditService:
                 f'{traceback.format_exc()}',
                 file=sys.stderr,
             )
-            _db.session.rollback()
             return record
         return record
     

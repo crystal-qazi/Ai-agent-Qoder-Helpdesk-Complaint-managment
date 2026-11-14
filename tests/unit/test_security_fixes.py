@@ -16,34 +16,43 @@ sys.path.insert(0, _PROJECT_ROOT)
 
 
 class TestNotificationOpenRedirect(unittest.TestCase):
-    """The notification view_notification route must not redirect to
-    external URLs stored in action_url."""
+    """Exercise the exact validator used by the notification route."""
 
-    def _simulate_redirect_check(self, action_url):
-        """Reproduce the logic from notifications.py view_notification."""
-        from urllib.parse import urlparse
-        parsed = urlparse(action_url)
-        # Simulate request.host == 'example.com'
-        is_safe = (
-            (not parsed.scheme and not parsed.netloc)
-            or (parsed.scheme in ('http', 'https') and parsed.netloc == 'example.com')
+    def setUp(self):
+        from app.routes.notifications import _safe_internal_redirect_target
+        self.validate = _safe_internal_redirect_target
+
+    def test_absolute_internal_path_is_safe(self):
+        self.assertEqual(self.validate('/complaints/1', 'example.com'), '/complaints/1')
+
+    def test_external_and_protocol_relative_urls_are_blocked(self):
+        self.assertIsNone(self.validate('https://evil.test/', 'example.com'))
+        self.assertIsNone(self.validate('//evil.test/', 'example.com'))
+
+    def test_unsafe_schemes_are_blocked(self):
+        self.assertIsNone(self.validate('javascript:alert(1)', 'example.com'))
+        self.assertIsNone(self.validate('data:text/html,bad', 'example.com'))
+
+    def test_same_origin_absolute_url_is_safe(self):
+        self.assertEqual(
+            self.validate('https://example.com/complaints/1', 'example.com'),
+            'https://example.com/complaints/1',
         )
-        return is_safe
 
-    def test_relative_path_is_safe(self):
-        self.assertTrue(self._simulate_redirect_check('/complaints/1'))
+    def test_host_suffix_and_userinfo_attacks_are_blocked(self):
+        self.assertIsNone(self.validate('https://example.com.evil.test/', 'example.com'))
+        self.assertIsNone(self.validate('https://example.com@evil.test/', 'example.com'))
 
-    def test_external_url_is_blocked(self):
-        self.assertFalse(self._simulate_redirect_check('https://evil.com/'))
+    def test_backslash_and_encoded_backslash_are_blocked(self):
+        self.assertIsNone(self.validate('\\\\evil.test/path', 'example.com'))
+        self.assertIsNone(self.validate('/%5c%5cevil.test/path', 'example.com'))
 
-    def test_protocol_relative_is_blocked(self):
-        self.assertFalse(self._simulate_redirect_check('//evil.com/'))
+    def test_relative_reference_without_leading_slash_is_blocked(self):
+        self.assertIsNone(self.validate('complaints/1', 'example.com'))
 
-    def test_javascript_scheme_is_blocked(self):
-        self.assertFalse(self._simulate_redirect_check('javascript:alert(1)'))
-
-    def test_same_origin_url_is_safe(self):
-        self.assertTrue(self._simulate_redirect_check('http://example.com/'))
+    def test_whitespace_and_control_characters_are_blocked(self):
+        self.assertIsNone(self.validate(' /complaints/1', 'example.com'))
+        self.assertIsNone(self.validate('/complaints/1\r\nLocation:https://evil.test', 'example.com'))
 
 
 class TestWorkingScheduleDeleteSLAReference(unittest.TestCase):

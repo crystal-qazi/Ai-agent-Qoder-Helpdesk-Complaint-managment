@@ -420,7 +420,8 @@ class PermissionPolicy:
             .join(Role, User.roles)
             .join(Permission, Role.permissions)
             .filter(
-                Permission.name == 'complaints.view_my',
+                Permission.name == 'complaints.assign',
+                Permission.is_active == True,
                 Role.is_active == True,
                 User.is_active == True,
                 User.id != complaint.assigned_to_user_id,

@@ -8,6 +8,40 @@ from app.services.audit import AuditService
 notifications_bp = Blueprint('notifications', __name__, url_prefix='/notifications')
 
 
+def _safe_internal_redirect_target(action_url, host):
+    """Return a validated same-origin path/URL, or None."""
+    from urllib.parse import unquote, urlsplit
+
+    if not isinstance(action_url, str) or not action_url or action_url != action_url.strip():
+        return None
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in action_url) or "\\" in action_url:
+        return None
+
+    try:
+        parsed = urlsplit(action_url)
+    except ValueError:
+        return None
+
+    decoded_path = unquote(parsed.path or "")
+    if "\\" in decoded_path or any(ord(ch) < 32 or ord(ch) == 127 for ch in decoded_path):
+        return None
+
+    if not parsed.scheme and not parsed.netloc:
+        if not parsed.path.startswith("/") or parsed.path.startswith("//"):
+            return None
+        return action_url
+
+    if parsed.scheme.lower() not in ("http", "https"):
+        return None
+    if parsed.username is not None or parsed.password is not None:
+        return None
+    if not parsed.netloc or parsed.netloc.casefold() != str(host).casefold():
+        return None
+    if not parsed.path.startswith("/") or parsed.path.startswith("//"):
+        return None
+    return action_url
+
+
 @notifications_bp.route('/')
 @login_required
 def list_notifications():
@@ -47,14 +81,11 @@ def view_notification(notification_id):
     # Redirect to action URL if present, otherwise show notification detail.
     # Only allow internal (same-origin) URLs to prevent open-redirect.
     if notification.action_url:
-        from urllib.parse import urlparse
-        parsed = urlparse(notification.action_url)
-        is_safe = (
-            (not parsed.scheme and not parsed.netloc)          # relative path
-            or (parsed.scheme in ('http', 'https') and parsed.netloc == request.host)
+        safe_target = _safe_internal_redirect_target(
+            notification.action_url, request.host,
         )
-        if is_safe:
-            return redirect(notification.action_url)
+        if safe_target:
+            return redirect(safe_target)
     
     return render_template('notifications/detail.html', notification=notification)
 
