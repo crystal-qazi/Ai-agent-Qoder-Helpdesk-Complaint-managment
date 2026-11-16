@@ -463,7 +463,7 @@ def upload_attachment(complaint_id):
         file.seek(0)
         file.save(storage_path)
 
-        file_info['original_filename'] = file.filename
+        file_info['original_filename'] = sanitize_filename(file.filename)
         file_info['stored_filename'] = stored_filename
         file_info['storage_path'] = storage_path
 
