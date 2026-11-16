@@ -546,6 +546,7 @@ class ComplaintService:
             category='data',
         )
         
+        attachment_id = attachment.id
         db.session.delete(attachment)
         db.session.commit()
 
@@ -558,7 +559,7 @@ class ComplaintService:
         except OSError:
             current_app.logger.exception(
                 'Attachment row %s was deleted but its file could not be removed',
-                attachment.id,
+                attachment_id,
             )
         return True, 'Attachment deleted successfully.'
     
