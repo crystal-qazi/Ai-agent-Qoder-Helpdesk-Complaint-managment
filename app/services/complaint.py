@@ -2,7 +2,7 @@
 from datetime import datetime
 from app.extensions import db
 from app.models import (
-    Complaint, ComplaintAssignment, ComplaintStatusHistory,
+    Complaint, ComplaintAssignment, ComplaintStatusHistory, ComplaintNumberSequence,
     ComplaintHistory, Comment, Attachment, User, Status, Priority
 )
 from app.services.sla import SLAService
@@ -20,20 +20,47 @@ class ComplaintService:
         year = datetime.utcnow().year
         prefix = f'ITC-{year}-'
         
-        # Find the last complaint number for this year
-        last_complaint = Complaint.query.filter(
-            Complaint.complaint_number.like(f'{prefix}%')
-        ).order_by(Complaint.complaint_number.desc()).first()
-        
-        if last_complaint:
-            try:
-                last_number = int(last_complaint.complaint_number.split('-')[-1])
-                new_number = last_number + 1
-            except (ValueError, IndexError):
-                new_number = 1
+        # Allocate from a per-year row locked until the surrounding
+        # complaint transaction commits. The unique year key also handles
+        # the first-use race when two requests arrive simultaneously.
+        from sqlalchemy.exc import IntegrityError
+
+        sequence = ComplaintNumberSequence.query.filter_by(
+            year=year
+        ).with_for_update().first()
+
+        if sequence is not None:
+            new_number = sequence.next_number
+            sequence.next_number = new_number + 1
+            db.session.flush()
         else:
-            new_number = 1
-        
+            # Bootstrap from existing complaint numbers so this migration
+            # can be deployed without resetting or renumbering old records.
+            last_complaint = Complaint.query.filter(
+                Complaint.complaint_number.like(f'{prefix}%')
+            ).order_by(Complaint.complaint_number.desc()).first()
+            try:
+                last_number = int(last_complaint.complaint_number.split('-')[-1]) if last_complaint else 0
+            except (ValueError, IndexError):
+                last_number = 0
+            new_number = last_number + 1
+
+            try:
+                with db.session.begin_nested():
+                    sequence = ComplaintNumberSequence(
+                        year=year, next_number=new_number + 1
+                    )
+                    db.session.add(sequence)
+                    db.session.flush()
+            except IntegrityError:
+                # Another transaction initialized this year's row first.
+                sequence = ComplaintNumberSequence.query.filter_by(
+                    year=year
+                ).with_for_update().one()
+                new_number = sequence.next_number
+                sequence.next_number = new_number + 1
+                db.session.flush()
+
         return f'{prefix}{new_number:06d}'
     
     @classmethod
