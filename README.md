@@ -38,6 +38,7 @@ Edit `.env` with your MySQL credentials. For local development the account needs
 
 ```bat
 set FLASK_ENV=development
+set FLASK_APP=app:create_app
 flask db upgrade
 ```
 
@@ -56,6 +57,7 @@ Set production credentials and a strong `SECRET_KEY` in the production service e
 
 ```bat
 set FLASK_ENV=production
+set FLASK_APP=app:create_app
 flask db upgrade
 ```
 
