@@ -129,11 +129,23 @@ class User(BaseModel, UserMixin):
     )
     login_attempts = db.relationship('LoginAttempt', backref='user', lazy='dynamic', cascade='all, delete-orphan')
     
-    # Complaint relationships (Complaint defines its own forward relationships)
-    reported_complaints = db.relationship('Complaint', foreign_keys='Complaint.reported_by_user_id', lazy='dynamic')
-    created_complaints = db.relationship('Complaint', foreign_keys='Complaint.created_by_user_id', lazy='dynamic')
-    assigned_complaints = db.relationship('Complaint', foreign_keys='Complaint.assigned_to_user_id', lazy='dynamic')
-    resolved_complaints = db.relationship('Complaint', foreign_keys='Complaint.resolved_by_user_id', lazy='dynamic')
+    # Complaint relationships
+    reported_complaints = db.relationship(
+        'Complaint', foreign_keys='Complaint.reported_by_user_id',
+        back_populates='reported_by', lazy='dynamic',
+    )
+    created_complaints = db.relationship(
+        'Complaint', foreign_keys='Complaint.created_by_user_id',
+        back_populates='created_by', lazy='dynamic',
+    )
+    assigned_complaints = db.relationship(
+        'Complaint', foreign_keys='Complaint.assigned_to_user_id',
+        back_populates='assigned_to', lazy='dynamic',
+    )
+    resolved_complaints = db.relationship(
+        'Complaint', foreign_keys='Complaint.resolved_by_user_id',
+        back_populates='resolved_by', lazy='dynamic',
+    )
     
     def __repr__(self):
         return f'<User {self.username}>'
