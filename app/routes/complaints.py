@@ -25,6 +25,18 @@ from app.services.audit import AuditService
 complaints_bp = Blueprint('complaints', __name__, url_prefix='/complaints')
 
 
+def _parse_optional_int_fields(data, fields):
+    """Parse submitted integer fields without turning bad input into HTTP 500."""
+    try:
+        for field in fields:
+            value = data.get(field)
+            if value not in (None, ''):
+                data[field] = int(value)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 @complaints_bp.route('/')
 @login_required
 def list_complaints():
@@ -114,17 +126,21 @@ def create_complaint():
     if request.method == 'POST':
         data = request.form.to_dict()
         
-        # Convert lists
-        data['category_id'] = int(data['category_id']) if data.get('category_id') else None
-        data['priority_id'] = int(data['priority_id']) if data.get('priority_id') else None
-        data['department_id'] = int(data['department_id']) if data.get('department_id') else None
-        data['software_id'] = int(data['software_id']) if data.get('software_id') else None
+        # Parse numeric values defensively; malformed client input must
+        # produce a validation response instead of an unhandled exception.
+        if not _parse_optional_int_fields(data, [
+            'category_id', 'priority_id', 'department_id', 'software_id',
+            'reported_by_user_id', 'assigned_to_user_id', 'affected_users_count',
+        ]):
+            flash('One or more numeric fields contain an invalid value.', 'danger')
+            return redirect(url_for('complaints.create_complaint'))
+        data['affected_users_count'] = data.get('affected_users_count') or 1
 
         # Reporter identity: ordinary users can only file for themselves.
         # Privileged users (complaints.view_all) may file on behalf of another
         # active user, but the selection must exist and be active.
         if current_user.has_permission('complaints.view_all'):
-            selected_reporter_id = int(data['reported_by_user_id']) if data.get('reported_by_user_id') else current_user.id
+            selected_reporter_id = data.get('reported_by_user_id') or current_user.id
             reporter = User.query.filter_by(id=selected_reporter_id, is_active=True).first()
             if reporter is None:
                 flash('Selected reporter does not exist or is inactive.', 'danger')
@@ -133,8 +149,6 @@ def create_complaint():
         else:
             data['reported_by_user_id'] = current_user.id
 
-        data['assigned_to_user_id'] = int(data['assigned_to_user_id']) if data.get('assigned_to_user_id') else None
-        data['affected_users_count'] = int(data['affected_users_count']) if data.get('affected_users_count') else 1
         
         # Parse incident_started_at
         if data.get('incident_started_at'):
