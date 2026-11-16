@@ -314,7 +314,6 @@ def main():
 
 
         db.session.commit()
-        db.session.commit()
         print(f"Database {actual_db} seeded successfully.")
         if not args.production:
             print("Development demo users:")
