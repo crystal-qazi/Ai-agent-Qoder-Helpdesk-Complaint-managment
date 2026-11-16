@@ -104,6 +104,10 @@ class Config:
         ).split(',') if e.strip()
     )
 
+    # Password reset remains unavailable in production until a secure
+    # delivery and recovery workflow is implemented.
+    PASSWORD_RESET_ENABLED = True
+
     # Mail
     MAIL_SERVER = os.environ.get('MAIL_SERVER', 'localhost')
     MAIL_PORT = int(os.environ.get('MAIL_PORT', '25'))
@@ -139,6 +143,7 @@ class ProductionConfig(Config):
     """
     DEBUG = False
     SQLALCHEMY_ECHO = False
+    PASSWORD_RESET_ENABLED = False
 
     # Secure cookies.  ``SESSION_COOKIE_SECURE=True`` means the session
     # cookie is only sent over HTTPS.  Deployments running on plain HTTP
