@@ -44,6 +44,13 @@ def create_app(config_name=None):
     # changes their password. Keep logout and static assets available.
     @app.before_request
     def enforce_password_change():
+        # The legacy reset-token flow is intentionally retained for future
+        # redesign, but must not be exposed in production.
+        if (not app.config.get('PASSWORD_RESET_ENABLED', True)
+                and request.endpoint in {'auth.forgot_password', 'auth.reset_password'}):
+            from flask import abort
+            abort(404)
+
         if not current_user.is_authenticated or not current_user.must_change_password:
             return None
         allowed_endpoints = {'auth.change_password', 'auth.logout', 'static'}
