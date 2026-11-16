@@ -258,10 +258,12 @@ def edit_complaint(complaint_id):
     if request.method == 'POST':
         data = request.form.to_dict()
         
-        # Convert types
-        for field in ['category_id', 'priority_id', 'department_id', 'software_id', 'affected_users_count']:
-            if data.get(field):
-                data[field] = int(data[field])
+        # Convert numeric values defensively.
+        if not _parse_optional_int_fields(
+            data, ['category_id', 'priority_id', 'department_id', 'software_id', 'affected_users_count']
+        ):
+            flash('One or more numeric fields contain an invalid value.', 'danger')
+            return redirect(url_for('complaints.edit_complaint', complaint_id=complaint.id))
         
         if data.get('incident_started_at'):
             try:
