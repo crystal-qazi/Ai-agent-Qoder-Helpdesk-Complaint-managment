@@ -1,6 +1,7 @@
 import os
 import re
 from datetime import timedelta
+from sqlalchemy.engine import URL
 
 
 def _as_bool(value, default=False):
@@ -51,8 +52,6 @@ class Config:
 
     # Build the URL safely so special characters in the DB password work.
     # Each environment has a fixed database name to prevent cross-use.
-    from sqlalchemy.engine import URL
-
     @staticmethod
     def _database_url(database_name):
         return URL.create(
