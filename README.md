@@ -1,107 +1,86 @@
-# IT Software Complain System
+# Helpdesk Complaint Management System
 
-A comprehensive Flask-based complaint tracking system for hospital IT support, featuring SLA management, role-based access control, reporting, and notification systems.
+Flask + MySQL complaint management application.
 
-## Features
+## Databases
 
-- **Complaint Management**: Full CRUD with assignment, status workflow, comments, and attachments
-- **Role-Based Access Control**: Configurable roles and permissions
-- **SLA Tracking**: Business-hours-based SLA calculations with escalation
-- **Dashboard**: Real-time statistics and charts
-- **Reporting**: CSV/PDF export with multiple report types
-- **Notifications**: In-app notification center
-- **Audit Logging**: Complete audit trail for all actions
-- **Offline-Ready**: Works on hospital intranet without internet
+The app selects one fixed MySQL database from `FLASK_ENV`:
 
-## Technology Stack
+| Mode | Database |
+|---|---|
+| `development` (default) | `helpdesk_qoder_dev` |
+| `production` | `Helpdesk_qoder_prod` |
+| `testing` | in-memory SQLite |
 
-- **Backend**: Flask, SQLAlchemy, Flask-Login, Flask-Migrate
-- **Frontend**: Tailwind CSS, Alpine.js, Chart.js
-- **Database**: MySQL 8+ (InnoDB)
-- **Testing**: pytest, Playwright
-- **Security**: Bandit, pip-audit, Semgrep
+The connection URL is built safely from `DB_HOST`, `DB_PORT`, `DB_USER`, and `DB_PASSWORD`. Do not configure a generic `DATABASE_URL`; the app enforces the environment-specific target.
 
-## Setup
+## Initial setup (Windows)
 
-### 1. Create Database
+1. Create both databases:
 
 ```sql
-CREATE DATABASE helpdesk_qoder CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE helpdesk_qoder_dev CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE Helpdesk_qoder_prod CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-### 2. Install Dependencies
+2. Install and configure:
 
-```bash
-cd hospital_complaint_system
+```bat
 python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
+copy .env.example .env
 ```
 
-### 3. Configure Environment
+Edit `.env` with your MySQL credentials. For local development the account needs access to the development database. Production should use a dedicated least-privilege account configured in the production service environment.
 
-```bash
-cp .env.example .env
-# Edit .env with your database credentials
-```
+3. Create/update the development schema:
 
-### 4. Initialize Database
-
-```bash
+```bat
+set FLASK_ENV=development
 flask db upgrade
-python scripts/seed_data.py
 ```
 
-### 5. Run Application
+4. Run the development server:
 
-```bash
+```bat
+set FLASK_ENV=development
 python run.py
 ```
 
-Visit http://localhost:5000
+Open http://localhost:5000.
 
-**Default admin login**: `admin` / `Admin@123`
+## Production initialization
 
-## Configuration
+Set production credentials and a strong `SECRET_KEY` in the production service environment. Then run migrations explicitly:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | MySQL connection string | mysql://root:root@localhost/helpdesk_qoder |
-| `SECRET_KEY` | Flask secret key | (required) |
-| `SESSION_COOKIE_SECURE` | Secure cookies | false (intranet) |
-| `MAX_CONTENT_LENGTH` | Max upload size | 16777216 (16MB) |
-
-## Project Structure
-
-```
-hospital_complaint_system/
-├── app/
-│   ├── __init__.py          # Application factory
-│   ├── config.py            # Configuration classes
-│   ├── extensions.py        # Flask extensions
-│   ├── models/              # SQLAlchemy models
-│   ├── routes/              # Flask blueprints
-│   ├── services/            # Business logic services
-│   ├── permissions/         # RBAC decorators & policies
-│   ├── validators/          # Form validation
-│   └── templates/           # Jinja2 templates
-├── static/                  # CSS, JS, images
-├── migrations/              # Alembic migrations
-├── scripts/                 # Utility scripts
-├── tests/                   # Test suite
-├── uploads/                 # Attachment storage
-├── requirements.txt
-└── run.py
+```bat
+set FLASK_ENV=production
+flask db upgrade
 ```
 
-## Security Notes
+Start the production server:
 
-- Passwords are hashed with Werkzeug's check_password_hash
-- CSRF protection enabled via Flask-WTF
-- SQL injection protection via SQLAlchemy ORM
-- File uploads validated by extension and type
-- All admin routes require authentication and permissions
+```bat
+set FLASK_ENV=production
+python serve.py
+```
 
-## License
+Production startup rejects a weak/missing secret, root database credentials, missing database password, or an unexpected database name. Set `SESSION_COOKIE_SECURE=True` when serving over HTTPS.
 
-Internal hospital use.
+## Schema and seed policy
+
+- Alembic/Flask-Migrate is the only source of truth for table structure.
+- Use `flask db upgrade` to create/update tables in either database.
+- Do not use legacy `seed_data.py` or `seed_mysql.py`; they contain old hard-coded schema definitions.
+- Do not use `db.create_all()` as a replacement for migrations.
+- Never run destructive development reset scripts against production.
+- Back up production before every migration.
+
+## Admin password
+
+```bat
+python reset_admin_password.py
+```
+
+The script loads `.env` and uses the database selected by `FLASK_ENV`. Keep `FLASK_ENV=development` for the development admin account. Only set it to production when intentionally resetting the production admin account.
