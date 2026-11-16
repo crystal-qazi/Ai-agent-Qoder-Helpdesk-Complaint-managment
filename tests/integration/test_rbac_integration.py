@@ -76,7 +76,7 @@ def _validate_test_database_target(server: dict):
             'Cannot establish the configured application database identity; '
             'set DATABASE_URL or DB_NAME before running integration tests.'
         )
-    if app_db.casefold() in {_TEST_DB_NAME.casefold(), 'helpdesk_qoder_dev', 'helpdesk_qoder_prod'}:
+    if _TEST_DB_NAME.casefold() in {app_db.casefold(), 'helpdesk_qoder_dev', 'helpdesk_qoder_prod'}:
         raise RuntimeError(
             'The test database is the configured application database. '
             'Refusing to run integration tests.'
