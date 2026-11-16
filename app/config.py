@@ -49,11 +49,21 @@ class Config:
     # Flask
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
 
-    # Database
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        'DATABASE_URL',
-        'mysql+pymysql://dev_user:dev_password@localhost:3306/hospital_complaints',
-    )
+    # Build the URL safely so special characters in the DB password work.
+    # Each environment has a fixed database name to prevent cross-use.
+    from sqlalchemy.engine import URL
+
+    @staticmethod
+    def _database_url(database_name):
+        return URL.create(
+            'mysql+pymysql',
+            username=os.environ.get('DB_USER', 'helpdesk_app'),
+            password=os.environ.get('DB_PASSWORD', ''),
+            host=os.environ.get('DB_HOST', 'localhost'),
+            port=int(os.environ.get('DB_PORT', '3306')),
+            database=database_name,
+        )
+
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,
@@ -113,9 +123,10 @@ class Config:
 
 
 class DevelopmentConfig(Config):
-    """Development configuration."""
+    """Development configuration; always targets helpdesk_qoder_dev."""
     DEBUG = True
     SQLALCHEMY_ECHO = False
+    SQLALCHEMY_DATABASE_URI = Config._database_url('helpdesk_qoder_dev')
 
 
 class ProductionConfig(Config):
@@ -143,12 +154,8 @@ class ProductionConfig(Config):
     # detect at start-up.
     SECRET_KEY = os.environ.get('SECRET_KEY') or Config.SECRET_KEY
 
-    # The database URI; the caller validates the credentials when the
-    # app boots under FLASK_ENV=production.
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        'DATABASE_URL',
-        'mysql+pymysql://root:root@localhost:3306/hospital_complaints',
-    )
+    # Production always targets the explicitly named production database.
+    SQLALCHEMY_DATABASE_URI = Config._database_url('Helpdesk_qoder_prod')
 
     # Optional TRUSTED_PROXIES.  Operators on a public reverse-proxy must
     # set TRUSTED_PROXIES to the CIDR(s) of the proxy hops; X-Forwarded-For
@@ -217,6 +224,11 @@ def validate_production_env(config_instance):
     db_uri = getattr(config_instance, 'SQLALCHEMY_DATABASE_URI', None)
     if db_uri:
         url = make_url(db_uri)
+        if url.database != 'Helpdesk_qoder_prod':
+            raise RuntimeError(
+                'ProductionConfig: refusing unexpected database target. '
+                'Expected Helpdesk_qoder_prod.'
+            )
         if url.username == 'root':
             raise RuntimeError(
                 'ProductionConfig: the database URL uses the "root" '
