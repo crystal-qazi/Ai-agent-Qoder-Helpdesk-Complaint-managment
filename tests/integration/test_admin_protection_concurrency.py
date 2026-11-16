@@ -24,7 +24,7 @@ import unittest
 import pymysql
 from dotenv import load_dotenv
 
-from sqlalchemy.engine import make_url, URL
+from sqlalchemy.engine import URL
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
