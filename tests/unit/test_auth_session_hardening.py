@@ -59,6 +59,20 @@ class AuthenticationHardeningTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn('/auth/login', response.headers['Location'])
 
+    def test_successful_password_change_keeps_current_session_and_rotates_identity(self):
+        self._login()
+        response = self.client.post('/auth/change-password', data={
+            'current_password': 'StrongTest#123',
+            'new_password': 'NewStrong#456',
+            'confirm_password': 'NewStrong#456',
+        })
+        self.assertEqual(response.status_code, 302, response.get_data(as_text=True))
+        with self.client.session_transaction() as browser_session:
+            self.assertEqual(browser_session.get('_user_id'), f'{self.user_id}:3')
+            self.assertEqual(browser_session.get('_auth_version'), 3)
+        profile = self.client.get('/auth/profile')
+        self.assertEqual(profile.status_code, 200)
+
     def test_must_change_password_blocks_other_authenticated_pages(self):
         with self.app.app_context():
             user = db.session.get(User, self.user_id)
