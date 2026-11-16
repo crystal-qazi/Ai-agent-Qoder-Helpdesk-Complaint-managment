@@ -59,6 +59,16 @@ def create_app(config_name=None):
         flash('You must change your password before using the system.', 'warning')
         return redirect(url_for('auth.change_password'))
 
+    # Expose SLA breach checking as an explicit CLI task so Windows
+    # Task Scheduler or cron can run it independently of dashboard visits.
+    @app.cli.command('check-sla-breaches')
+    def check_sla_breaches_command():
+        from app.services.sla import SLAService
+        from app.extensions import db
+        breached = SLAService.check_sla_breaches()
+        db.session.commit()
+        print(f'SLA breach check complete: {len(breached)} new breach events.')
+
     # Register error handlers
     register_error_handlers(app)
     
