@@ -125,6 +125,9 @@ def login():
                     if 'login_user' in session:
                         session.pop('login_user', None)
                     login_user(user, remember=data.get('remember_me') == 'on')
+                    # Bind this browser session to the account's current
+                    # persistent credential version.
+                    session['_auth_version'] = user.session_version or 1
 
                     if user.must_change_password:
                         user.record_login(client_ip())
@@ -183,17 +186,13 @@ def logout():
 
 
 def invalidate_other_sessions(user):
-    """Record a rotation marker on the user so other sessions can detect
-    that their credentials have been superseded.
+    """Bind the current session to the persisted credential version.
 
-    The current request's session is explicitly marked; other sessions
-    carrying a mismatched marker are logged out on their next request.
+    User.set_password() increments session_version in the database. The
+    user_loader rejects every other session whose stored version is stale.
     """
-    marker = secrets.token_urlsafe(24)
-    session['_session_marker'] = marker
-    # In-memory attribute on the user instance; the next @login_required
-    # check in *another* session will see the old marker and log out.
-    user._current_session_marker = marker
+    session['_auth_version'] = user.session_version or 1
+    session.pop('_session_marker', None)
 
 
 @auth_bp.route('/change-password', methods=['GET', 'POST'])
