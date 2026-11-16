@@ -74,6 +74,19 @@ def create_app(config_name=None, config_overrides=None):
         db.session.commit()
         print(f'SLA breach check complete: {len(breached)} new breach events.')
 
+    # Baseline browser security headers. HSTS is emitted only when the
+    # deployment marks cookies secure (HTTPS); CSP is intentionally left to
+    # a later template audit because this UI currently uses inline assets.
+    @app.after_request
+    def add_security_headers(response):
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+        response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+        response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+        if app.config.get('SESSION_COOKIE_SECURE'):
+            response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000')
+        return response
+
     # Register error handlers
     register_error_handlers(app)
     
