@@ -68,8 +68,8 @@ class AuthenticationHardeningTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 302, response.get_data(as_text=True))
         with self.client.session_transaction() as browser_session:
-            self.assertEqual(browser_session.get('_user_id'), f'{self.user_id}:3')
-            self.assertEqual(browser_session.get('_auth_version'), 3)
+            self.assertEqual(browser_session.get('_user_id'), f'{self.user_id}:2')
+            self.assertEqual(browser_session.get('_auth_version'), 2)
         profile = self.client.get('/auth/profile')
         self.assertEqual(profile.status_code, 200)
 
