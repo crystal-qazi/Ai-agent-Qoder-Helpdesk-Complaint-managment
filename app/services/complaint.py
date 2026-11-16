@@ -483,11 +483,18 @@ class ComplaintService:
         
         complaint = attachment.complaint
         
-        # Delete file from storage
+        # Resolve the path before touching the filesystem. Database rows
+        # must never be able to direct deletion outside the configured upload root.
         import os
-        if os.path.exists(attachment.storage_path):
-            os.remove(attachment.storage_path)
-        
+        from flask import current_app
+        upload_root = os.path.realpath(current_app.config.get('UPLOAD_FOLDER', 'uploads'))
+        storage_path = os.path.realpath(attachment.storage_path)
+        try:
+            if os.path.commonpath([upload_root, storage_path]) != upload_root:
+                return False, 'Attachment storage path is outside the upload directory.'
+        except ValueError:
+            return False, 'Attachment storage path is invalid.'
+
         # Create history
         history = ComplaintHistory(
             complaint_id=complaint.id,
@@ -514,6 +521,18 @@ class ComplaintService:
         
         db.session.delete(attachment)
         db.session.commit()
+
+        # Remove the physical file only after the database transaction
+        # succeeds. A filesystem failure may leave an orphan, but never a
+        # database record pointing at a file already deleted.
+        try:
+            if os.path.isfile(storage_path):
+                os.remove(storage_path)
+        except OSError:
+            current_app.logger.exception(
+                'Attachment row %s was deleted but its file could not be removed',
+                attachment.id,
+            )
         return True, 'Attachment deleted successfully.'
     
     @classmethod
