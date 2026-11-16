@@ -147,7 +147,7 @@ class ProductionConfig(Config):
     # app boots under FLASK_ENV=production.
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         'DATABASE_URL',
-        'mysql+pymysql://app_user:change-me@localhost:3306/hospital_complaints',
+        'mysql+pymysql://root:root@localhost:3306/hospital_complaints',
     )
 
     # Optional TRUSTED_PROXIES.  Operators on a public reverse-proxy must
