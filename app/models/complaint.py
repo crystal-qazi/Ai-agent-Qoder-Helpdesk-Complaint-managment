@@ -4,6 +4,14 @@ from app.extensions import db
 from app.models.base import BaseModel, TimestampMixin
 
 
+class ComplaintNumberSequence(db.Model):
+    """Transactional per-year counter for collision-safe complaint numbers."""
+    __tablename__ = 'complaint_number_sequences'
+
+    year = db.Column(db.Integer, primary_key=True)
+    next_number = db.Column(db.Integer, nullable=False, default=1)
+
+
 class Complaint(BaseModel):
     """Main complaint model."""
     __tablename__ = 'complaints'
