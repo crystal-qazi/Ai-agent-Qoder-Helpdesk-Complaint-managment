@@ -210,6 +210,10 @@ def change_password():
             current_user.password_changed_at = datetime.utcnow()
             invalidate_other_sessions(current_user)
             db.session.commit()
+            # User.get_id() now contains the incremented session_version.
+            # Refresh this browser's Flask-Login identity so the current
+            # session survives while all older sessions are rejected.
+            login_user(current_user, remember=False, fresh=True)
 
             AuditService.log_action(
                 user_id=current_user.id,
