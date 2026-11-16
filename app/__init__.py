@@ -1,4 +1,5 @@
-from flask import Flask
+from flask import Flask, redirect, url_for, flash, request
+from flask_login import current_user
 from app.config import config, ProductionConfig, validate_production_env
 from app.extensions import init_extensions
 import os
@@ -38,6 +39,19 @@ def create_app(config_name=None):
     app.register_blueprint(reports_bp)
     app.register_blueprint(notifications_bp)
     
+    # Enforce forced password changes server-side. Hiding navigation is not
+    # sufficient: every authenticated endpoint is blocked until the user
+    # changes their password. Keep logout and static assets available.
+    @app.before_request
+    def enforce_password_change():
+        if not current_user.is_authenticated or not current_user.must_change_password:
+            return None
+        allowed_endpoints = {'auth.change_password', 'auth.logout', 'static'}
+        if request.endpoint in allowed_endpoints:
+            return None
+        flash('You must change your password before using the system.', 'warning')
+        return redirect(url_for('auth.change_password'))
+
     # Register error handlers
     register_error_handlers(app)
     
