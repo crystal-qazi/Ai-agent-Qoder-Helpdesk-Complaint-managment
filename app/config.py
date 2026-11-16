@@ -192,9 +192,8 @@ config = {
 def validate_production_env(config_instance):
     """Validate production settings and raise on misconfiguration.
 
-    Callers in WSGI entrypoints (wsgi.py, serve.py) invoke this when
-    ``FLASK_ENV == 'production'``.  The method is idempotent and may be
-    called more than once; the checks are pure so there is no state.
+    The application factory passes the selected config class. Checks are
+    deliberately fail-closed for production.
 
     Raises
     ------
@@ -205,7 +204,10 @@ def validate_production_env(config_instance):
         * The database URL uses the ``root`` account.
         * The database URL has no password.
     """
-    if not isinstance(config_instance, ProductionConfig):
+    if isinstance(config_instance, type):
+        if not issubclass(config_instance, ProductionConfig):
+            return
+    elif not isinstance(config_instance, ProductionConfig):
         # Dev/test configurations keep the placeholder; nothing to check.
         return
 
@@ -221,9 +223,7 @@ def validate_production_env(config_instance):
 
     # 2. Database URL must not use root or a blank password.
     from sqlalchemy.engine import make_url
-    db_uri = (config_instance.get('SQLALCHEMY_DATABASE_URI')
-              if hasattr(config_instance, 'get')
-              else getattr(config_instance, 'SQLALCHEMY_DATABASE_URI', None))
+    db_uri = getattr(config_instance, 'SQLALCHEMY_DATABASE_URI', None)
     if db_uri:
         url = make_url(db_uri)
         if url.database != 'Helpdesk_qoder_prod':
