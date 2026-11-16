@@ -41,7 +41,7 @@ def init_extensions(app):
         except (TypeError, ValueError):
             return None
 
-        user = User.query.get(user_id_int)
+        user = db.session.get(User, user_id_int)
         if user is None or not user.is_active or user.is_locked:
             return None
         current_version = user.session_version or 1
