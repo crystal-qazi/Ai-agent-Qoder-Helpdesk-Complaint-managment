@@ -31,6 +31,23 @@ def main():
     app = create_app(os.environ.get("FLASK_ENV", "development"))
 
     with app.app_context():
+        from sqlalchemy.engine import make_url
+
+        database_url = make_url(app.config["SQLALCHEMY_DATABASE_URI"])
+        target_database = database_url.database
+        expected_database = (
+            "Helpdesk_qoder_prod"
+            if app.config.get("DEBUG") is False
+            else "helpdesk_qoder_dev"
+        )
+        if target_database != expected_database:
+            raise SystemExit("Unexpected database target. Password reset cancelled.")
+
+        print(f"Target database: {target_database}")
+        confirmation = input("Type the database name to continue: ").strip()
+        if confirmation != target_database:
+            raise SystemExit("Database confirmation did not match. No changes made.")
+
         new_password = getpass("New admin password (minimum 12 characters): ")
         confirm_password = getpass("Confirm password: ")
 
