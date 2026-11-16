@@ -221,7 +221,9 @@ def validate_production_env(config_instance):
 
     # 2. Database URL must not use root or a blank password.
     from sqlalchemy.engine import make_url
-    db_uri = getattr(config_instance, 'SQLALCHEMY_DATABASE_URI', None)
+    db_uri = (config_instance.get('SQLALCHEMY_DATABASE_URI')
+              if hasattr(config_instance, 'get')
+              else getattr(config_instance, 'SQLALCHEMY_DATABASE_URI', None))
     if db_uri:
         url = make_url(db_uri)
         if url.database != 'Helpdesk_qoder_prod':
