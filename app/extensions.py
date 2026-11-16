@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
+from flask import session
 from flask_wtf.csrf import CSRFProtect
 import logging
 from logging.handlers import RotatingFileHandler
@@ -30,7 +31,15 @@ def init_extensions(app):
     @login_manager.user_loader
     def load_user(user_id):
         from app.models.user import User
-        return User.query.get(int(user_id))
+        user = User.query.get(int(user_id))
+        if user is None or not user.is_active or user.is_locked:
+            return None
+        # Reject sessions issued before a password/credential change.
+        # A missing version is an old session and must re-authenticate.
+        stored_version = session.get('_auth_version')
+        if stored_version is None or stored_version != (user.session_version or 1):
+            return None
+        return user
     
     # Configure logging
     if not app.debug and not app.testing:
