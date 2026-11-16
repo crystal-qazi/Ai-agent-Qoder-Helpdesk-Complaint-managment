@@ -11,7 +11,7 @@ from app.models import (
     User, Comment, Attachment, ComplaintAssignment, ComplaintStatusHistory
 )
 from app.validators.complaint import validate_complaint_data, validate_status_transition, validate_assignment_data, validate_comment_data
-from app.validators.file import validate_file_upload, generate_stored_filename, sanitize_filename
+from app.validators.file import validate_file_upload, validate_file_download, generate_stored_filename, sanitize_filename
 from app.permissions.decorators import (
     can_view_complaint, can_edit_complaint, can_assign_complaint,
     can_change_status_complaint, can_view_all_complaints
@@ -292,8 +292,12 @@ def assign_complaint(complaint_id):
     complaint = Complaint.query.get_or_404(complaint_id)
     
     data = request.form.to_dict()
-    data['new_assignee_id'] = int(data['new_assignee_id']) if data.get('new_assignee_id') else None
-    
+    try:
+        data['new_assignee_id'] = int(data['new_assignee_id']) if data.get('new_assignee_id') else None
+    except (TypeError, ValueError):
+        flash('Invalid assignee identifier.', 'danger')
+        return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
+
     errors = validate_assignment_data(data)
     
     if not errors:
@@ -331,7 +335,11 @@ def change_status(complaint_id):
         abort(403)
 
     data = request.form.to_dict()
-    new_status_id = int(data['status_id']) if data.get('status_id') else None
+    try:
+        new_status_id = int(data['status_id']) if data.get('status_id') else None
+    except (TypeError, ValueError):
+        flash('Invalid status identifier.', 'danger')
+        return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
 
     if not new_status_id:
         flash('Status is required.', 'danger')
@@ -471,9 +479,11 @@ def download_attachment(complaint_id, attachment_id):
     if attachment.complaint_id != complaint_id:
         abort(404)
     
-    if not PermissionPolicy.can_download_attachment(current_user, attachment):
-        abort(403)
-    if not os.path.exists(attachment.storage_path):
+    allowed, reason = validate_file_download(attachment, current_user)
+    if not allowed:
+        # Keep authorization failures distinct from missing/unsafe storage.
+        if reason and 'permission' in reason.lower():
+            abort(403)
         abort(404)
     
     # Update download count
