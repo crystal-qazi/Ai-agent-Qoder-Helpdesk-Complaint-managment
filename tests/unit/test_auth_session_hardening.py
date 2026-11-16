@@ -44,9 +44,9 @@ class AuthenticationHardeningTests(unittest.TestCase):
 
     def test_password_version_change_invalidates_existing_session(self):
         self._login()
-        with db.session.begin():
-            user = db.session.get(User, self.user_id)
-            user.session_version += 1
+        user = db.session.get(User, self.user_id)
+        user.session_version += 1
+        db.session.commit()
 
         response = self.client.get('/auth/profile')
         self.assertEqual(response.status_code, 302)
