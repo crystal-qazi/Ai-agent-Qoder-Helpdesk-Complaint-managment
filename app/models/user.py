@@ -104,6 +104,8 @@ class User(BaseModel, UserMixin):
     failed_login_attempts = db.Column(db.Integer, default=0, nullable=False)
     last_failed_login_at = db.Column(db.DateTime, nullable=True)
     password_changed_at = db.Column(db.DateTime, nullable=True)
+    # Incremented whenever credentials are changed; older sessions become invalid.
+    session_version = db.Column(db.Integer, nullable=False, default=1, server_default='1')
     must_change_password = db.Column(db.Boolean, default=False, nullable=False)
     
     # Department relationship
@@ -158,6 +160,12 @@ class User(BaseModel, UserMixin):
         """Set password hash."""
         self.password_hash = generate_password_hash(password)
         self.password_changed_at = datetime.utcnow()
+        # New records start at version 1; changing an existing account's
+        # password invalidates every session issued with the previous version.
+        if self.session_version is None:
+            self.session_version = 1
+        else:
+            self.session_version += 1
         self.must_change_password = False
     
     def check_password(self, password):
