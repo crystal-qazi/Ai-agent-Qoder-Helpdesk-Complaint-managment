@@ -122,8 +122,9 @@ def login():
                 else:
                     # Session fixation mitigation: rotate the session
                     # identity before we mark the user authenticated.
-                    if 'login_user' in session:
-                        session.pop('login_user', None)
+                    # Drop pre-authentication state before establishing the
+                    # authenticated identity (including any stale user id).
+                    session.clear()
                     login_user(user, remember=data.get('remember_me') == 'on')
                     # Bind this browser session to the account's current
                     # persistent credential version.
