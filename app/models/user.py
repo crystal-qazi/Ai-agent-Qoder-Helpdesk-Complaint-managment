@@ -152,6 +152,10 @@ class User(BaseModel, UserMixin):
     def __repr__(self):
         return f'<User {self.username}>'
     
+    def get_id(self):
+        """Include credential version in Flask-Login session/remember identity."""
+        return f'{self.id}:{self.session_version or 1}'
+
     @property
     def full_name(self):
         return f'{self.first_name} {self.last_name}'
