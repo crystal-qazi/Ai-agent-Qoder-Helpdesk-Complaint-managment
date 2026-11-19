@@ -47,7 +47,12 @@ def _connection_settings():
         )
     if not user or not password:
         raise SystemExit(
-            'Set DB_USER and DB_PASSWORD (no empty/root credential defaults).'
+            'Set DB_USER and DB_PASSWORD (no empty credential defaults).'
+        )
+    if user.lower() == 'root':
+        raise SystemExit(
+            'Refusing to run cleanup_old_permissions.py with the MySQL root account. '
+            'Use a non-root application account.'
         )
     return {
         'host': os.environ.get('DB_HOST', 'localhost'),

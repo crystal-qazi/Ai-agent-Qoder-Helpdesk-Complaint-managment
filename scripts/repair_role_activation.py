@@ -55,7 +55,12 @@ def load_db_config() -> dict:
     user = os.environ.get('DB_USER', '').strip()
     password = os.environ.get('DB_PASSWORD', '')
     if not user or not password:
-        raise SystemExit('Set DB_USER and DB_PASSWORD (no empty/root defaults).')
+        raise SystemExit('Set DB_USER and DB_PASSWORD (no empty credential defaults).')
+    if user.lower() == 'root':
+        raise SystemExit(
+            'Refusing to run repair_role_activation.py with the MySQL root account. '
+            'Use a non-root application account.'
+        )
     return {
         'host': os.environ.get('DB_HOST', 'localhost'),
         'port': int(os.environ.get('DB_PORT', '3306')),

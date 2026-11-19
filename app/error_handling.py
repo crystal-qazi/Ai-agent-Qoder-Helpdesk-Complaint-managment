@@ -24,7 +24,7 @@ _REDACTED = '<redacted>'
 # bound-parameter rendering SQLAlchemy includes in driver errors.
 _SECRET_PAIR_RE = re.compile(
     r"(?i)\b(password|passwd|pwd|secret|token|api[_-]?key|authorization|"
-    r"session|csrf|credential|license[_-]?key)\b"
+    r"session|csrf|credential|license[_-]?key)\w*\b"
     r"\s*[:=]\s*(?:'[^']*'|\"[^\"]*\"|[^\s,;)\]}]+)"
 )
 
@@ -34,6 +34,29 @@ _URL_CREDENTIALS_RE = re.compile(r"(?i)([a-z][a-z0-9+.\-]*://)[^/\s@]+@")
 # Bearer tokens and JWTs.
 _BEARER_RE = re.compile(r"(?i)\b(bearer)\s+[A-Za-z0-9._\-]+")
 _JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+")
+
+
+# The first element of a SQL parameter tuple rendered by the driver, e.g.
+# ``('hunter2', 5)``.  Only the first token is treated as a value that may
+# carry a secret; the remaining positional args are preserved for operator
+# correlation.  The regex matches the first element inside parentheses
+# regardless of how many elements follow.
+_SQL_PARAM_TUPLE_RE = re.compile(
+    r'\(\s*(\'[^\']*\'|"[^"]*")'
+)
+
+
+def _redact_sql_params(text):
+    """Mask the first element of each SQL parameter tuple.
+
+    ``('SuperSecret123', 5)`` becomes ``('<redacted>', 5)``.  The rule is
+    conservative: only the very first token in a parenthesised group is
+    replaced, so genuine numeric / code parameters that follow are left
+    intact.
+    """
+    return _SQL_PARAM_TUPLE_RE.sub(
+        f'(\'{_REDACTED}\'', text,
+    )
 
 
 def redact_text(value):
@@ -49,6 +72,11 @@ def redact_text(value):
     text = _URL_CREDENTIALS_RE.sub(lambda m: f'{m.group(1)}{_REDACTED}@', text)
     text = _BEARER_RE.sub(lambda m: f'{m.group(1)} {_REDACTED}', text)
     text = _JWT_RE.sub(_REDACTED, text)
+    # Positional SQL parameter lists: mask only the first element of each
+    # tuple so that a leaked password hash / reset token in that position
+    # is never written to the log verbatim.  Trailing ids / codes are kept
+    # so operators can still correlate with database rows.
+    text = _redact_sql_params(text)
     return text
 
 

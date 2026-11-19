@@ -110,6 +110,88 @@ class TestResetAndSeedTargetsTestDatabase(unittest.TestCase):
         with patch.dict(os.environ, {'TEST_DB_NAME': 'helpdesk_ci_test'}, clear=False):
             self.assertEqual(self.module._target_database(), 'helpdesk_ci_test')
 
+    def test_rejects_mysql_root_account_in_main(self):
+        env = {
+            'TARGET_TEST_DB': '1',
+            'TEST_DB_NAME': 'helpdesk_qoder_test',
+            'DB_HOST': 'localhost',
+            'DB_USER': 'root',
+            'DB_PASSWORD': 'any-password',
+        }
+        with patch.dict(os.environ, env, clear=False):
+            with self.assertRaises(SystemExit):
+                self.module.main()
+
+    def test_all_four_safety_scripts_refuse_root_account(self):
+        """repair_role_activation, seed_data, and cleanup_old_permissions
+        now mirror reset_and_seed.py's root-account guard."""
+        # seed_data.py calls get_connection() at module-import time, so we
+        # must set ALLOW_LEGACY_SEED=1 in the env before importing it.
+        env = {
+            'FLASK_ENV': 'development',
+            'DB_NAME': 'helpdesk_qoder_test',
+            'DB_HOST': 'localhost',
+            'DB_PORT': '3306',
+            'DB_USER': 'root',
+            'DB_PASSWORD': 'any-password',
+            'ALLOW_LEGACY_SEED': '1',
+        }
+        with patch.dict(os.environ, env, clear=False):
+            from scripts import repair_role_activation, cleanup_old_permissions
+
+            with self.assertRaises(SystemExit):
+                repair_role_activation.load_db_config()
+
+            with self.assertRaises(SystemExit):
+                cleanup_old_permissions.get_connection()
+
+            # seed_data.py calls get_connection() on import; the import
+            # itself will raise SystemExit on the root-account guard.
+            import importlib
+            try:
+                import scripts.seed_data  # noqa: F401
+                importlib.import_module('scripts.seed_data')
+                self.fail('Expected SystemExit when importing seed_data with root user')
+            except SystemExit:
+                pass
+
+
+
+class TestResetAndSeedTableCountsScope(unittest.TestCase):
+    """``table_counts`` must not rely on globals that are only local.
+
+    Before the fix, ``table_counts`` referenced ``db`` and ``text`` as module
+    globals that were imported inside ``_do_rebuild`` — so after the rebuild
+    committed, ``table_counts()`` raised ``NameError``.  This test is isolated:
+    it confirms the two imports live in the function body and that the helper
+    runs end-to-end with a mocked database session (no real connection).
+    """
+
+    def setUp(self):
+        import inspect
+        from scripts import reset_and_seed
+        self.module = reset_and_seed
+        self._body = inspect.getsource(reset_and_seed.table_counts)
+
+    def test_imports_db_and_text_locally(self):
+        self.assertIn('from sqlalchemy import text', self._body)
+        self.assertIn('from app.extensions import db', self._body)
+
+    def test_runs_without_name_error_and_no_database(self):
+        import unittest.mock as _mock
+
+        fake_db = _mock.MagicMock(name='db')
+        fake_db.session.execute.return_value.scalar.return_value = 0
+
+        # Patch the two modules the function imports from so the local
+        # imports resolve to fakes without touching any real database.
+        with _mock.patch('app.extensions.db', fake_db), \
+                _mock.patch('sqlalchemy.text', create=True) as fake_text:
+            fake_text.side_effect = lambda sql: sql
+            self.module.table_counts()
+
+        self.assertEqual(fake_db.session.execute.call_count, 11)
+
 
 class TestStaleVariableCleanup(unittest.TestCase):
     """Source-level guards for the scripts/tests that referenced the old vars."""

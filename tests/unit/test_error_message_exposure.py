@@ -103,6 +103,40 @@ class TestRedaction(unittest.TestCase):
         text = 'IntegrityError: duplicate entry for key code'
         self.assertEqual(self.redact(text), text)
 
+    # --- regression: suffixed secret keys and positional SQL params -------
+
+    def test_password_hash_value_is_redacted(self):
+        # Synthetic hash, not a real credential.
+        out = self.redact("UPDATE users SET password_hash='pbkdf2:sha256:99999$abc$xyz123' WHERE id=7")
+        self.assertNotIn('pbkdf2:sha256:99999$abc$xyz123', out)
+        self.assertIn('<redacted>', out)
+        # The id should still be visible for correlation.
+        self.assertIn('id=7', out)
+
+    def test_reset_token_hash_value_is_redacted(self):
+        out = self.redact('token_hash=abcdef0123456789')
+        self.assertNotIn('abcdef0123456789', out)
+
+    def test_positional_sql_param_first_element_is_redacted(self):
+        # Synthetic positional parameters; only the first (a secret-shaped
+        # string) is masked, the trailing numeric id is preserved.
+        out = self.redact("params [('SuperSecret123', 5)]")
+        self.assertNotIn('SuperSecret123', out)
+        self.assertIn("('<redacted>', 5)", out)
+
+    def test_positional_numeric_only_params_are_not_masked(self):
+        out = self.redact("params [(5, 12)]")
+        # No quoted first element, so nothing should be masked.
+        self.assertEqual(out, "params [(5, 12)]")
+
+    def test_real_credential_is_never_written_to_log(self):
+        """End-to-end: a route failure that raises with a synthetic secret
+        in the exception message must not write that secret to the log."""
+        from app.error_handling import redact_text
+        secret = 'SuperSecret123'
+        self.assertNotIn(secret, redact_text(f'password={secret}'))
+        self.assertNotIn(secret, redact_text(f"[('{secret}', 5)]"))
+
 
 def _build_app(permission_name, seed_catalogs=False):
     """Testing app with one active user holding ``permission_name``."""

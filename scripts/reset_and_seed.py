@@ -238,6 +238,16 @@ SETTINGS = [
 
 
 def table_counts():
+    """Print per-table row counts for the operator to eyeball the result.
+
+    The database helpers are imported here (rather than at module import
+    time) because the script's safety guard must be able to refuse to run
+    before any SQLAlchemy app object is constructed.  Run inside an active
+    application context (see ``_do_rebuild``).
+    """
+    from sqlalchemy import text
+    from app.extensions import db
+
     tables = [
         'users', 'roles', 'permissions', 'departments', 'categories',
         'statuses', 'priorities', 'sla_policies', 'working_schedules',

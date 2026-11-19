@@ -59,6 +59,9 @@ def get_connection():
         )
     if not user or not password:
         raise SystemExit('Set DB_USER and DB_PASSWORD (no empty credential defaults).')
+    if user.lower() == 'root':
+        raise SystemExit('Refusing to run seed_data.py with the MySQL root account. '
+                         'Use a non-root application account for the test database.')
 
     import pymysql
     # Never print credentials.
