@@ -7,6 +7,7 @@ from app.models import (
 )
 from app.services.audit import AuditService
 from app.permissions.decorators import can_manage_config, can_view_audit_logs
+from app.error_handling import log_unexpected_error, user_error_message
 from app.validators.config import (
     validate_department_data, validate_software_data,
     validate_category_data, validate_priority_data,
@@ -84,7 +85,9 @@ def create_department():
                 return redirect(url_for('admin.list_departments'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating department: {str(e)}', 'danger')
+                log_unexpected_error('create department', e,
+                                     code=data.get('code'))
+                flash(user_error_message('create the department'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -156,7 +159,9 @@ def edit_department(dept_id):
                 return redirect(url_for('admin.list_departments'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating department: {str(e)}', 'danger')
+                log_unexpected_error('update department', e,
+                                     department_id=dept.id)
+                flash(user_error_message('update the department'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -277,7 +282,8 @@ def create_software():
                 return redirect(url_for('admin.list_software'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error adding software: {str(e)}', 'danger')
+                log_unexpected_error('create software', e, code=data.get('code'))
+                flash(user_error_message('add the software entry'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -364,7 +370,8 @@ def edit_software(sw_id):
                 return redirect(url_for('admin.list_software'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating software: {str(e)}', 'danger')
+                log_unexpected_error('update software', e, software_id=sw.id)
+                flash(user_error_message('update the software entry'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -463,7 +470,8 @@ def create_category():
                 return redirect(url_for('admin.list_categories'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating category: {str(e)}', 'danger')
+                log_unexpected_error('create category', e, name=data.get('name'))
+                flash(user_error_message('create the category'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -558,7 +566,8 @@ def edit_category(cat_id):
                 return redirect(url_for('admin.list_categories'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating category: {str(e)}', 'danger')
+                log_unexpected_error('update category', e, category_id=cat.id)
+                flash(user_error_message('update the category'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -697,7 +706,8 @@ def create_priority():
                 return redirect(url_for('admin.list_priorities'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating priority: {str(e)}', 'danger')
+                log_unexpected_error('create priority', e, code=data.get('code'))
+                flash(user_error_message('create the priority'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -789,7 +799,8 @@ def edit_priority(priority_id):
                 return redirect(url_for('admin.list_priorities'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating priority: {str(e)}', 'danger')
+                log_unexpected_error('update priority', e, priority_id=pri.id)
+                flash(user_error_message('update the priority'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -915,7 +926,8 @@ def create_status():
                 return redirect(url_for('admin.list_statuses'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating status: {str(e)}', 'danger')
+                log_unexpected_error('create status', e, code=data.get('code'))
+                flash(user_error_message('create the status'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -1009,7 +1021,8 @@ def edit_status(status_id):
                 return redirect(url_for('admin.list_statuses'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating status: {str(e)}', 'danger')
+                log_unexpected_error('update status', e, status_id=status.id)
+                flash(user_error_message('update the status'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -1173,7 +1186,8 @@ def create_sla_policy():
                 return redirect(url_for('admin.list_sla_policies'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating SLA policy: {str(e)}', 'danger')
+                log_unexpected_error('create SLA policy', e, name=data.get('name'))
+                flash(user_error_message('create the SLA policy'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -1331,7 +1345,8 @@ def edit_sla_policy(policy_id):
                 return redirect(url_for('admin.list_sla_policies'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating SLA policy: {str(e)}', 'danger')
+                log_unexpected_error('update SLA policy', e, policy_id=policy.id)
+                flash(user_error_message('update the SLA policy'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -1463,7 +1478,9 @@ def create_working_schedule():
                 return redirect(url_for('admin.list_working_schedules'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating working schedule: {str(e)}', 'danger')
+                log_unexpected_error('create working schedule', e,
+                                     name=data.get('name'))
+                flash(user_error_message('create the working schedule'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -1563,7 +1580,9 @@ def edit_working_schedule(schedule_id):
                 return redirect(url_for('admin.list_working_schedules'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating working schedule: {str(e)}', 'danger')
+                log_unexpected_error('update working schedule', e,
+                                     schedule_id=schedule.id)
+                flash(user_error_message('update the working schedule'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -1667,7 +1686,8 @@ def create_holiday():
                 return redirect(url_for('admin.list_holidays'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating holiday: {str(e)}', 'danger')
+                log_unexpected_error('create holiday', e, name=data.get('name'))
+                flash(user_error_message('create the holiday'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -1741,7 +1761,8 @@ def edit_holiday(holiday_id):
                 return redirect(url_for('admin.list_holidays'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating holiday: {str(e)}', 'danger')
+                log_unexpected_error('update holiday', e, holiday_id=holiday.id)
+                flash(user_error_message('update the holiday'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -1822,7 +1843,9 @@ def create_system_setting():
                 return redirect(url_for('admin.list_system_settings'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating system setting: {str(e)}', 'danger')
+                log_unexpected_error('create system setting', e,
+                                     setting_key=data.get('key'))
+                flash(user_error_message('create the system setting'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -1885,7 +1908,9 @@ def edit_system_setting(setting_id):
                 return redirect(url_for('admin.list_system_settings'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating system setting: {str(e)}', 'danger')
+                log_unexpected_error('update system setting', e,
+                                     setting_id=setting.id)
+                flash(user_error_message('update the system setting'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')

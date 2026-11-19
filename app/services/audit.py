@@ -150,17 +150,15 @@ class AuditService:
         try:
             with AuditSession.begin() as audit_session:
                 audit_session.add(record)
-        except Exception:
+        except Exception as exc:
             # The audit transaction is independent. Never roll back the
             # request-scoped session here: it may contain unrelated work.
-            import sys
-            import traceback
-            print(
-                f'[audit] Failed to persist blocked security event '
-                f'{action!r} (entity_type={entity_type}, entity_id={entity_id}). '
-                f'Caller may hold row locks that conflict with this transaction.\n'
-                f'{traceback.format_exc()}',
-                file=sys.stderr,
+            # The driver error text can embed the failing statement and its
+            # bound parameters, so it is redacted before being written out.
+            from app.error_handling import log_unexpected_error
+            log_unexpected_error(
+                f'persist blocked security event {action!r}', exc,
+                entity_type=entity_type, entity_id=entity_id,
             )
             return record
         return record

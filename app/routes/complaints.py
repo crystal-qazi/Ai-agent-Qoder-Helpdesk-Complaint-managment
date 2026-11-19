@@ -20,6 +20,7 @@ from app.permissions.policy import PermissionPolicy
 from app.services.complaint import ComplaintService
 from app.services.sla import SLAService
 from app.services.audit import AuditService
+from app.error_handling import log_unexpected_error, user_error_message
 
 
 complaints_bp = Blueprint('complaints', __name__, url_prefix='/complaints')
@@ -166,7 +167,9 @@ def create_complaint():
                 return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating complaint: {str(e)}', 'danger')
+                log_unexpected_error('create complaint', e,
+                                     reported_by_user_id=data.get('reported_by_user_id'))
+                flash(user_error_message('create the complaint'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -280,7 +283,9 @@ def edit_complaint(complaint_id):
                 return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating complaint: {str(e)}', 'danger')
+                log_unexpected_error('update complaint', e,
+                                     complaint_id=complaint.id)
+                flash(user_error_message('update the complaint'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')

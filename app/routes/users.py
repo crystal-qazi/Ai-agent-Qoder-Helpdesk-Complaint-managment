@@ -8,6 +8,7 @@ from app.validators.user import validate_user_data, validate_password_strength
 from app.permissions.decorators import can_manage_users, can_manage_roles
 from app.services.audit import AuditService
 from app.services.admin_protection import AdminProtectionService, ProtectionCheck
+from app.error_handling import log_unexpected_error, user_error_message
 
 
 users_bp = Blueprint('users', __name__, url_prefix='/users')
@@ -138,7 +139,9 @@ def create_user():
                 return redirect(url_for('users.view_user', user_id=user.id))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating user: {str(e)}', 'danger')
+                log_unexpected_error('create user', e,
+                                     username=data.get('username'))
+                flash(user_error_message('create the user'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -287,7 +290,10 @@ def edit_user(user_id):
                 return redirect(url_for('users.view_user', user_id=user.id))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating user: {str(e)}', 'danger')
+                log_unexpected_error('update user', e,
+                                     username=data.get('username'),
+                                     user_id=user.id)
+                flash(user_error_message('update the user'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -450,7 +456,8 @@ def create_role():
                 return redirect(url_for('users.list_roles'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating role: {str(e)}', 'danger')
+                log_unexpected_error('create role', e, role_name=name)
+                flash(user_error_message('create the role'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -519,7 +526,8 @@ def edit_role(role_id):
                 return redirect(url_for('users.list_roles'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating role: {str(e)}', 'danger')
+                log_unexpected_error('update role', e, role_id=role_id)
+                flash(user_error_message('update the role'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')

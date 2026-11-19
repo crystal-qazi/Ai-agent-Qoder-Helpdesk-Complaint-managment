@@ -33,7 +33,10 @@ jobs:
             tests.unit.test_auth_session_hardening \
             tests.unit.test_hardening \
             tests.unit.test_repaired_issues \
-            tests.unit.test_security_fixes -v
+            tests.unit.test_security_fixes \
+            tests.unit.test_error_message_exposure \
+            tests.unit.test_database_configuration \
+            tests.unit.test_password_reset_scope -v
 
 
   mysql-integration:

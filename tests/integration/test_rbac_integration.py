@@ -29,7 +29,6 @@ from dotenv import load_dotenv
 
 # Load .env the same way run.py does, so DB host/port/credentials are known.
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
-_APPLICATION_DATABASE_URL = os.environ.get('DATABASE_URL')
 
 _TEST_DB_NAME = os.environ.get('TEST_DB_NAME', 'helpdesk_qoder_test')
 
@@ -37,9 +36,11 @@ _TEST_DB_NAME = os.environ.get('TEST_DB_NAME', 'helpdesk_qoder_test')
 def _server_config():
     """Return the connection details used by the app's fixed development DB.
 
-    The application intentionally ignores DATABASE_URL and DB_NAME and uses
-    helpdesk_qoder_dev in development. Mirror that configuration here so the
-    safety check compares against the database the app would actually use.
+    The application does not read ``DATABASE_URL`` or ``DB_NAME``; it uses
+    the ``DB_HOST`` / ``DB_PORT`` / ``DB_USER`` / ``DB_PASSWORD`` settings
+    and the fixed ``helpdesk_qoder_dev`` name. Mirror that configuration
+    here so the safety check compares against the database the app would
+    actually use.
     """
     if os.environ.get('FLASK_ENV', 'development').lower() == 'production':
         raise RuntimeError('RBAC integration tests must never run in production mode.')
@@ -74,7 +75,7 @@ def _validate_test_database_target(server: dict):
     if not app_db:
         raise RuntimeError(
             'Cannot establish the configured application database identity; '
-            'set DATABASE_URL or DB_NAME before running integration tests.'
+            'check the DB_* settings before running integration tests.'
         )
     if _TEST_DB_NAME.casefold() in {app_db.casefold(), 'helpdesk_qoder_dev', 'helpdesk_qoder_prod'}:
         raise RuntimeError(

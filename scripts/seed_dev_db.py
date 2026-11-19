@@ -1,15 +1,27 @@
-"""Seed SQLite dev database for local testing."""
+"""Seed the SQLite scratch database for local UI experiments.
+
+The application itself does not read ``DATABASE_URL``; this throwaway
+script only needs its own in-process SQLite file, which it configures via
+an explicit ``SQLALCHEMY_DATABASE_URI`` override.  It never touches the
+MySQL development or production schemas.
+"""
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-os.environ.setdefault('DATABASE_URL', 'sqlite:///instance/dev.db')
 
 from app import create_app
 from app.extensions import db
 import app.models  # noqa: F401 registers all tables
 
-app = create_app('development')
+# Pin the throwaway database explicitly instead of relying on an
+# environment variable the application no longer consults.  SQLite does
+# not accept the MySQL pool tuning options, so the engine options are
+# narrowed the same way TestingConfig does.
+app = create_app('development', {
+    'SQLALCHEMY_DATABASE_URI': 'sqlite:///instance/dev.db',
+    'SQLALCHEMY_ENGINE_OPTIONS': {'pool_pre_ping': True},
+})
 
 with app.app_context():
     db.create_all()

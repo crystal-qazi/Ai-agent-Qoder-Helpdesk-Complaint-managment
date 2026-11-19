@@ -10,8 +10,9 @@ The suite is isolated against the same dedicated test database used by
 application database. It only adds rows and only inside a fresh test
 session that is dropped at the end of each test.
 
-Requires a MySQL server reachable via ``DATABASE_URL`` (or the DB_*
-env vars) and the ``helpdesk_<identifier>_test`` database. Run with::
+Requires a MySQL server reachable via the ``DB_HOST`` / ``DB_PORT`` /
+``DB_USER`` / ``DB_PASSWORD`` settings and the ``helpdesk_<identifier>_test``
+database. Run with::
 
     .venv/Scripts/python.exe -m unittest \
         tests.integration.test_admin_protection_concurrency -v
@@ -34,8 +35,9 @@ _TEST_DB_NAME = os.environ.get('TEST_DB_NAME', 'helpdesk_qoder_test')
 def _server_config():
     if os.environ.get('FLASK_ENV', 'development').lower() == 'production':
         raise RuntimeError('Concurrency tests must never run in production mode.')
-    # The application pins development to helpdesk_qoder_dev and ignores
-    # DATABASE_URL/DB_NAME. Mirror that actual target for the safety check.
+    # The application pins development to helpdesk_qoder_dev and builds the
+    # connection from the DB_* settings only. Mirror that actual target for
+    # the safety check.
     return {
         'host': os.environ.get('DB_HOST', 'localhost'),
         'port': int(os.environ.get('DB_PORT', '3306')),
@@ -66,7 +68,7 @@ def _validate_test_database_target(server: dict):
     if not app_db:
         raise RuntimeError(
             'Cannot establish the configured application database identity; '
-            'set DATABASE_URL or DB_NAME before running concurrency tests.'
+            'check the DB_* settings before running concurrency tests.'
         )
     if _TEST_DB_NAME.casefold() in {app_db.casefold(), 'helpdesk_qoder_dev', 'helpdesk_qoder_prod'}:
         raise RuntimeError(
