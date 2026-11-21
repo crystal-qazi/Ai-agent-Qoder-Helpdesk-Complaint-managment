@@ -36,31 +36,37 @@ ORIGINAL_SEEDED_ROLES = (
 
 
 def load_db_config() -> dict:
-    """Read MySQL config from environment or .env file."""
-    if 'DATABASE_URL' in os.environ:
-        # mysql+pymysql://user:pass@host:port/db
-        url = os.environ['DATABASE_URL']
-        rest = url.split('://', 1)[1] if '://' in url else url
-        # rest = user:pass@host:port/db[/query]
-        cred, _, hostportdb = rest.partition('@')
-        user, _, pwd = cred.partition(':')
-        hostport, _, dbname = hostportdb.partition('/')
-        host, _, port = hostport.partition(':')
-        return {
-            'host': host or 'localhost',
-            'port': int(port) if port else 3306,
-            'user': user,
-            'password': pwd,
-            'database': dbname,
-        }
+    """Read the MySQL connection from the active DB_* configuration.
 
-    # Fall back to .env values
+    The application no longer uses a generic ``DATABASE_URL``: it builds
+    its connection from ``DB_HOST`` / ``DB_PORT`` / ``DB_USER`` /
+    ``DB_PASSWORD`` and a fixed database name per environment.  This
+    script follows the same model and requires an explicit ``DB_NAME`` so
+    it can never silently repair the wrong schema.
+    """
+    if os.environ.get('FLASK_ENV', 'development').lower() == 'production':
+        raise SystemExit(
+            'repair_role_activation.py is a development data-repair helper; '
+            'refusing to run with FLASK_ENV=production.'
+        )
+    database = os.environ.get('DB_NAME', '').strip()
+    if not database:
+        raise SystemExit('Set DB_NAME to the development database to repair.')
+    user = os.environ.get('DB_USER', '').strip()
+    password = os.environ.get('DB_PASSWORD', '')
+    if not user or not password:
+        raise SystemExit('Set DB_USER and DB_PASSWORD (no empty credential defaults).')
+    if user.lower() == 'root':
+        raise SystemExit(
+            'Refusing to run repair_role_activation.py with the MySQL root account. '
+            'Use a non-root application account.'
+        )
     return {
         'host': os.environ.get('DB_HOST', 'localhost'),
         'port': int(os.environ.get('DB_PORT', '3306')),
-        'user': os.environ.get('DB_USER', 'root'),
-        'password': os.environ.get('DB_PASSWORD', ''),
-        'database': os.environ.get('DB_NAME', 'helpdesk_qoder'),
+        'user': user,
+        'password': password,
+        'database': database,
     }
 
 

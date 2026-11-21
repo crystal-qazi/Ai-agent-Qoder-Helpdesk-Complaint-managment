@@ -22,38 +22,34 @@ import os
 import re
 import unittest
 
-from sqlalchemy.engine import make_url, URL
+from sqlalchemy.engine import URL
 
 import pymysql
 from dotenv import load_dotenv
 
 # Load .env the same way run.py does, so DB host/port/credentials are known.
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
-_APPLICATION_DATABASE_URL = os.environ.get('DATABASE_URL')
 
 _TEST_DB_NAME = os.environ.get('TEST_DB_NAME', 'helpdesk_qoder_test')
 
 
 def _server_config():
-    """Parse the configured application DB URL without lossy string splitting."""
-    raw_url = _APPLICATION_DATABASE_URL
-    if raw_url:
-        parsed = make_url(raw_url)
-        if not parsed.drivername.startswith('mysql'):
-            raise RuntimeError('MySQL integration tests require a MySQL DATABASE_URL.')
-        return {
-            'host': parsed.host or 'localhost',
-            'port': parsed.port or 3306,
-            'user': parsed.username,
-            'password': parsed.password or '',
-            'database': parsed.database,
-        }
+    """Return the connection details used by the app's fixed development DB.
+
+    The application does not read ``DATABASE_URL`` or ``DB_NAME``; it uses
+    the ``DB_HOST`` / ``DB_PORT`` / ``DB_USER`` / ``DB_PASSWORD`` settings
+    and the fixed ``helpdesk_qoder_dev`` name. Mirror that configuration
+    here so the safety check compares against the database the app would
+    actually use.
+    """
+    if os.environ.get('FLASK_ENV', 'development').lower() == 'production':
+        raise RuntimeError('RBAC integration tests must never run in production mode.')
     return {
         'host': os.environ.get('DB_HOST', 'localhost'),
         'port': int(os.environ.get('DB_PORT', '3306')),
         'user': os.environ.get('DB_USER', 'root'),
         'password': os.environ.get('DB_PASSWORD', ''),
-        'database': os.environ.get('DB_NAME'),
+        'database': 'helpdesk_qoder_dev',
     }
 
 
@@ -79,9 +75,9 @@ def _validate_test_database_target(server: dict):
     if not app_db:
         raise RuntimeError(
             'Cannot establish the configured application database identity; '
-            'set DATABASE_URL or DB_NAME before running integration tests.'
+            'check the DB_* settings before running integration tests.'
         )
-    if app_db.casefold() == _TEST_DB_NAME.casefold():
+    if _TEST_DB_NAME.casefold() in {app_db.casefold(), 'helpdesk_qoder_dev', 'helpdesk_qoder_prod'}:
         raise RuntimeError(
             'The test database is the configured application database. '
             'Refusing to run integration tests.'
@@ -130,9 +126,13 @@ class RBACIntegrationTestBase(unittest.TestCase):
     def _build_app_once(cls):
         server = _server_config()
         cls._db_uri = _test_database_url(server)
-        os.environ['DATABASE_URL'] = cls._db_uri
         from app import create_app
-        cls._app = create_app('development')
+        # The app's normal development configuration is deliberately pinned
+        # to helpdesk_qoder_dev. Override it BEFORE SQLAlchemy initializes so
+        # destructive test-schema setup can only reach helpdesk_qoder_test.
+        cls._app = create_app('development', {
+            'SQLALCHEMY_DATABASE_URI': cls._db_uri,
+        })
         cls._app.config['SERVER_NAME'] = 'localhost'
         cls._client = cls._app.test_client()
 

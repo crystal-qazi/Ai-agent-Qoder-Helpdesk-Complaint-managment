@@ -31,7 +31,29 @@ class Status(BaseModel):
         return f'<Status {self.name}>'
     
     def can_transition_to(self, target_status_id):
-        """Check if transition to target status is allowed."""
-        if self.allowed_transitions is None:
-            return True  # No restrictions configured
+        """Check if transition to target status is allowed.
+
+        The rule is deny-by-default:
+
+        * When ``allowed_transitions`` is ``None`` (no rules configured)
+          or empty, *no* transition is permitted.  This is safe against
+          existing seed data because every seeded status has an explicit
+          transition list.  A status with NULL or ``[]`` rules is
+          treated as "do not allow any outbound transitions" — which
+          also means the *terminal* status (Closed, Rejected) has no
+          outbound rules, so reopening from a terminal status requires
+          an explicit re-open workflow (an administrator manually
+          editing the status's ``allowed_transitions`` to add a target,
+          or the user invoking ``reopened`` through the restricted
+          permission path).
+        * When ``allowed_transitions`` is a non-empty list, the target
+          ID must be present in that list.
+
+        Returning ``False`` for an empty/missing rule list makes the
+        system fail safe: an operator who accidentally clears a status
+        rule cannot then move a complaint out of that status until the
+        rule is restored.
+        """
+        if not self.allowed_transitions:
+            return False
         return target_status_id in self.allowed_transitions

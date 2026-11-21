@@ -8,6 +8,7 @@ from app.validators.user import validate_user_data, validate_password_strength
 from app.permissions.decorators import can_manage_users, can_manage_roles
 from app.services.audit import AuditService
 from app.services.admin_protection import AdminProtectionService, ProtectionCheck
+from app.error_handling import log_unexpected_error, user_error_message
 
 
 users_bp = Blueprint('users', __name__, url_prefix='/users')
@@ -138,7 +139,9 @@ def create_user():
                 return redirect(url_for('users.view_user', user_id=user.id))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating user: {str(e)}', 'danger')
+                log_unexpected_error('create user', e,
+                                     username=data.get('username'))
+                flash(user_error_message('create the user'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -251,7 +254,36 @@ def edit_user(user_id):
                 user.employee_number = data.get('employee_number', '').strip() or None
                 user.department_id = data.get('department_id')
                 user.is_active = data.get('is_active', True)
-                user.must_change_password = data.get('must_change_password', False)
+                
+                # Preserve the existing must_change_password flag unless
+                # an explicitly authorized workflow is requested.  A
+                # form submission that does not include the checkbox
+                # (e.g. a regular profile edit that never renders the
+                # checkbox) must not silently clear the flag.  The flag
+                # may only be *cleared* when the actor holds the admin
+                # role — clearing is a system-management operation
+                # that ordinary user editors must not be able to
+                # bypass.  Setting the flag to True remains a
+                # legitimate user-management action and is open to any
+                # user with ``users.manage``.
+                if 'must_change_password' in data:
+                    if data.get('must_change_password'):
+                        user.must_change_password = True
+                    else:
+                        # Clearing the flag is a system-management
+                        # action: only an *active* administrator may do
+                        # it.  ``has_role`` filters active roles, but
+                        # the actor themselves must also be active — a
+                        # deactivated admin's roles no longer confer
+                        # authority (mirrors the ``load_user``
+                        # fail-closed behaviour), so the gate must
+                        # check ``current_user.is_active`` as well.
+                        actor_is_admin = current_user.is_active and \
+                            current_user.has_role(
+                                AdminProtectionService.ADMIN_ROLE_NAME)
+                        if actor_is_admin:
+                            user.must_change_password = False
+                        # else: keep the flag; a non-admin may not lift it.
                 
                 # Update roles (validated set only)
                 if normalized_role_ids:
@@ -287,7 +319,10 @@ def edit_user(user_id):
                 return redirect(url_for('users.view_user', user_id=user.id))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating user: {str(e)}', 'danger')
+                log_unexpected_error('update user', e,
+                                     username=data.get('username'),
+                                     user_id=user.id)
+                flash(user_error_message('update the user'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -419,6 +454,17 @@ def create_role():
         if not display_name:
             errors['display_name'] = 'Display name is required.'
         
+        # Server-side role-creation authorization.  Rejects malformed,
+        # unknown or inactive permission IDs and blocks any attempt to
+        # mint a new role that carries sensitive system-management
+        # permissions unless the actor is an administrator.  The audit
+        # trail is written by the protection service.
+        role_creation_check = AdminProtectionService.can_create_role(
+            current_user, permission_ids, role_name=name,
+        )
+        if not role_creation_check.ok:
+            errors['permission_ids'] = role_creation_check.reason
+        
         if not errors:
             try:
                 role = Role(
@@ -429,9 +475,16 @@ def create_role():
                 db.session.add(role)
                 db.session.flush()
                 
-                # Assign permissions
+                # Assign permissions.  ``can_create_role`` has already
+                # validated every submitted ID (exists, is active, and is
+                # delegable by this actor).  Re-query so the relationship
+                # binds the *validated active* rows, not raw form values.
                 if permission_ids:
-                    permissions = Permission.query.filter(Permission.id.in_(permission_ids)).all()
+                    valid_ids = [int(p) for p in permission_ids if str(p).strip().isdigit()]
+                    permissions = Permission.query.filter(
+                        Permission.id.in_(valid_ids),
+                        Permission.is_active == True,
+                    ).all()
                     role.permissions = permissions
                 
                 db.session.commit()
@@ -450,7 +503,8 @@ def create_role():
                 return redirect(url_for('users.list_roles'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating role: {str(e)}', 'danger')
+                log_unexpected_error('create role', e, role_name=name)
+                flash(user_error_message('create the role'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -519,7 +573,8 @@ def edit_role(role_id):
                 return redirect(url_for('users.list_roles'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating role: {str(e)}', 'danger')
+                log_unexpected_error('update role', e, role_id=role_id)
+                flash(user_error_message('update the role'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')

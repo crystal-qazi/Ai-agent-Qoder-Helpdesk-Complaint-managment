@@ -1,30 +1,77 @@
 """Remove stale complaint permissions from the database.
 
-Run once after switching to the new 10-permission complaint model.
-Handles both SQLite and MySQL via DATABASE_URL.
+Legacy one-time maintenance script.  Run it only against an explicitly
+named, non-production database.
+
+Database configuration
+----------------------
+The Flask application does **not** read ``DATABASE_URL``.  It builds its
+connection from ``DB_HOST`` / ``DB_PORT`` / ``DB_USER`` / ``DB_PASSWORD``
+plus a fixed database name per environment.  The old ``DATABASE_URL``
+lookup (which defaulted to a SQLite file from an earlier build) was stale:
+it pointed at a database the application never uses, so it has been
+removed.
+
+This script now follows the application's configuration model.  It
+requires an explicit ``DB_NAME``, refuses the development and production
+schemas, and never prints credentials::
+
+    DB_NAME=helpdesk_qoder_test python scripts/cleanup_old_permissions.py
 """
-import re
 import os
 from dotenv import load_dotenv
 load_dotenv()
 
-db_url = os.environ.get('DATABASE_URL', 'sqlite:///instance/helpdesk.db')
+# Application schemas that must never be mutated by this cleanup.
+_PROTECTED_DATABASES = {'helpdesk_qoder_dev', 'helpdesk_qoder_prod'}
+
+
+def _connection_settings():
+    """Validate and return MySQL connection settings from the DB_* vars."""
+    if os.environ.get('FLASK_ENV', 'development').lower() == 'production':
+        raise SystemExit(
+            'cleanup_old_permissions.py is a development maintenance helper; '
+            'refusing to run with FLASK_ENV=production.'
+        )
+    database = os.environ.get('DB_NAME', '').strip()
+    user = os.environ.get('DB_USER', '').strip()
+    password = os.environ.get('DB_PASSWORD', '')
+    if not database:
+        raise SystemExit(
+            'Set DB_NAME explicitly. This script never guesses a database.'
+        )
+    if database.casefold() in _PROTECTED_DATABASES:
+        raise SystemExit(
+            f'Refusing to run against application schema {database!r}. '
+            'Use a dedicated helpdesk_*_test database.'
+        )
+    if not user or not password:
+        raise SystemExit(
+            'Set DB_USER and DB_PASSWORD (no empty credential defaults).'
+        )
+    if user.lower() == 'root':
+        raise SystemExit(
+            'Refusing to run cleanup_old_permissions.py with the MySQL root account. '
+            'Use a non-root application account.'
+        )
+    return {
+        'host': os.environ.get('DB_HOST', 'localhost'),
+        'port': int(os.environ.get('DB_PORT', '3306')),
+        'user': user,
+        'password': password,
+        'database': database,
+    }
 
 
 def get_connection():
-    if db_url.startswith('mysql'):
-        match = re.match(r'mysql\+pymysql://([^:]+):([^@]*)@([^:/]+)(?::(\d+))?/(\w+)', db_url)
-        user, password, host, port, dbname = match.groups()
-        import pymysql
-        conn = pymysql.connect(host=host, port=int(port or 3306), user=user, password=password, database=dbname)
-        return conn, 'mysql'
-    else:
-        import sqlite3
-        path = db_url.replace('sqlite:///', '')
-        if not os.path.isabs(path):
-            path = os.path.join(os.getcwd(), path)
-        conn = sqlite3.connect(path)
-        return conn, 'sqlite'
+    """Return a (connection, dialect) pair for the validated MySQL target."""
+    import pymysql
+    cfg = _connection_settings()
+    # Never print credentials; host/port/schema only.
+    print(f"Connecting to MySQL at {cfg['host']}:{cfg['port']}/{cfg['database']} "
+          f"(credentials hidden)")
+    conn = pymysql.connect(**cfg)
+    return conn, 'mysql'
 
 
 def upsert_ignore(cursor, dialect, table, columns, values):

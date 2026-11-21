@@ -1,11 +1,27 @@
 """
-Seed data script for IT Software Complain System.
-Uses raw SQL to avoid SQLAlchemy circular dependency issues.
-Usage: python scripts/seed_data.py
+Legacy seed data script for IT Software Complain System.
+
+NOT the canonical seeder.  The supported rebuild path is
+``scripts/reset_and_seed.py`` (isolated ``helpdesk_*_test`` schema only).
+This script is retained for historical local scratchpads.
+
+Database configuration
+----------------------
+The application does **not** read ``DATABASE_URL``; it builds its
+connection from ``DB_HOST`` / ``DB_PORT`` / ``DB_USER`` / ``DB_PASSWORD``
+plus a fixed database name per environment.  The old ``DATABASE_URL``
+default (a SQLite file from an earlier build) was stale and has been
+removed.
+
+This script now follows the same model.  It requires an explicit
+``DB_NAME``, refuses the development/production application schemas, and
+requires ``ALLOW_LEGACY_SEED=1`` so it can never run by accident::
+
+    ALLOW_LEGACY_SEED=1 DB_NAME=helpdesk_qoder_test python scripts/seed_data.py
 """
 import os
 import sys
-import sqlite3
+import sqlite3  # noqa: F401  (kept for historical SQLite helpers below)
 import json
 import re
 from werkzeug.security import generate_password_hash
@@ -17,35 +33,49 @@ load_dotenv()
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(BASE_DIR)
 
-# Read database URL from environment
-db_url = os.environ.get('DATABASE_URL', 'sqlite:///instance/helpdesk.db')
+_PROTECTED_DATABASES = {'helpdesk_qoder_dev', 'helpdesk_qoder_prod'}
+
 
 def get_connection():
-    """Get database connection based on URL."""
-    if db_url.startswith('mysql'):
-        match = re.match(r'mysql\+pymysql://([^:]+):([^@]*)@([^:/]+)(?::(\d+))?/(\w+)', db_url)
-        if not match:
-            raise ValueError("Could not parse DATABASE_URL")
-        user, password, host, port, dbname = match.groups()
-        import pymysql
-        conn = pymysql.connect(host=host, port=int(port or 3306), user=user, password=password, database=dbname)
-        return conn, 'mysql'
-    elif db_url.startswith('postgresql'):
-        match = re.match(r'postgresql://([^:]+):([^@]*)@([^:/]+)(?::(\d+))?/(\w+)', db_url)
-        if not match:
-            raise ValueError("Could not parse DATABASE_URL")
-        user, password, host, port, dbname = match.groups()
-        import psycopg2
-        conn = psycopg2.connect(host=host, port=int(port or 5432), user=user, password=password, database=dbname)
-        return conn, 'postgres'
-    else:
-        # SQLite
-        db_path = db_url.replace('sqlite:///', '')
-        if not os.path.isabs(db_path):
-            db_path = os.path.join(BASE_DIR, db_path)
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        conn = sqlite3.connect(db_path)
-        return conn, 'sqlite'
+    """Open the explicitly configured MySQL target using the DB_* vars."""
+    if os.environ.get('ALLOW_LEGACY_SEED') != '1':
+        raise SystemExit(
+            'seed_data.py is a legacy seeder. Set ALLOW_LEGACY_SEED=1 to run '
+            'it, or use scripts/reset_and_seed.py against a helpdesk_*_test '
+            'database instead.'
+        )
+    if os.environ.get('FLASK_ENV', 'development').lower() == 'production':
+        raise SystemExit('seed_data.py refuses to run with FLASK_ENV=production.')
+
+    database = os.environ.get('DB_NAME', '').strip()
+    user = os.environ.get('DB_USER', '').strip()
+    password = os.environ.get('DB_PASSWORD', '')
+    if not database:
+        raise SystemExit('Set DB_NAME explicitly. This script never guesses a database.')
+    if database.casefold() in _PROTECTED_DATABASES:
+        raise SystemExit(
+            f'Refusing to seed application schema {database!r}; '
+            'use a dedicated helpdesk_*_test database.'
+        )
+    if not user or not password:
+        raise SystemExit('Set DB_USER and DB_PASSWORD (no empty credential defaults).')
+    if user.lower() == 'root':
+        raise SystemExit('Refusing to run seed_data.py with the MySQL root account. '
+                         'Use a non-root application account for the test database.')
+
+    import pymysql
+    # Never print credentials.
+    print(f"Connecting to MySQL at "
+          f"{os.environ.get('DB_HOST', 'localhost')}:"
+          f"{os.environ.get('DB_PORT', '3306')}/{database} (credentials hidden)")
+    conn = pymysql.connect(
+        host=os.environ.get('DB_HOST', 'localhost'),
+        port=int(os.environ.get('DB_PORT', '3306')),
+        user=user,
+        password=password,
+        database=database,
+    )
+    return conn, 'mysql'
 
 def execute_sql(c, sql, params=None, dialect='sqlite'):
     """Execute SQL with proper placeholders."""

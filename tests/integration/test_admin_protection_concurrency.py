@@ -10,8 +10,9 @@ The suite is isolated against the same dedicated test database used by
 application database. It only adds rows and only inside a fresh test
 session that is dropped at the end of each test.
 
-Requires a MySQL server reachable via ``DATABASE_URL`` (or the DB_*
-env vars) and the ``helpdesk_<identifier>_test`` database. Run with::
+Requires a MySQL server reachable via the ``DB_HOST`` / ``DB_PORT`` /
+``DB_USER`` / ``DB_PASSWORD`` settings and the ``helpdesk_<identifier>_test``
+database. Run with::
 
     .venv/Scripts/python.exe -m unittest \
         tests.integration.test_admin_protection_concurrency -v
@@ -24,7 +25,7 @@ import unittest
 import pymysql
 from dotenv import load_dotenv
 
-from sqlalchemy.engine import make_url, URL
+from sqlalchemy.engine import URL
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
@@ -32,26 +33,17 @@ _TEST_DB_NAME = os.environ.get('TEST_DB_NAME', 'helpdesk_qoder_test')
 
 
 def _server_config():
-    raw_url = os.environ.get('DATABASE_URL')
-    if raw_url:
-        parsed = make_url(raw_url)
-        if not parsed.drivername.startswith('mysql'):
-            raise RuntimeError(
-                'Admin-protection concurrency tests require a MySQL DATABASE_URL.'
-            )
-        return {
-            'host': parsed.host or 'localhost',
-            'port': parsed.port or 3306,
-            'user': parsed.username,
-            'password': parsed.password or '',
-            'database': parsed.database,
-        }
+    if os.environ.get('FLASK_ENV', 'development').lower() == 'production':
+        raise RuntimeError('Concurrency tests must never run in production mode.')
+    # The application pins development to helpdesk_qoder_dev and builds the
+    # connection from the DB_* settings only. Mirror that actual target for
+    # the safety check.
     return {
         'host': os.environ.get('DB_HOST', 'localhost'),
         'port': int(os.environ.get('DB_PORT', '3306')),
         'user': os.environ.get('DB_USER', 'root'),
         'password': os.environ.get('DB_PASSWORD', ''),
-        'database': os.environ.get('DB_NAME'),
+        'database': 'helpdesk_qoder_dev',
     }
 
 
@@ -76,9 +68,9 @@ def _validate_test_database_target(server: dict):
     if not app_db:
         raise RuntimeError(
             'Cannot establish the configured application database identity; '
-            'set DATABASE_URL or DB_NAME before running concurrency tests.'
+            'check the DB_* settings before running concurrency tests.'
         )
-    if app_db.casefold() == _TEST_DB_NAME.casefold():
+    if _TEST_DB_NAME.casefold() in {app_db.casefold(), 'helpdesk_qoder_dev', 'helpdesk_qoder_prod'}:
         raise RuntimeError(
             'The concurrency test database is the configured application '
             'database. Refusing to run tests that mutate admin rows.'
@@ -124,18 +116,18 @@ class TestAdminProtectionConcurrency(unittest.TestCase):
         _ensure_test_db(server)
         cls._url = _test_database_url(server)
         from app import create_app
-        # Build with 'testing' (WTF disabled, faster bcrypt), then override
-        # the database URI to point at the dedicated test schema.
-        cls._app = create_app('testing')
-        cls._app.config['SQLALCHEMY_DATABASE_URI'] = cls._url
-        # The TestingConfig default pool is sized for SQLite; use the
-        # MySQL-appropriate options.
-        cls._app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-            'pool_pre_ping': True,
-            'pool_recycle': 300,
-            'pool_size': 10,
-            'max_overflow': 20,
-        }
+        # Apply the test URI and MySQL pool options BEFORE SQLAlchemy
+        # initializes; changing app.config afterwards leaves the engine
+        # connected to the original database.
+        cls._app = create_app('development', {
+            'SQLALCHEMY_DATABASE_URI': cls._url,
+            'SQLALCHEMY_ENGINE_OPTIONS': {
+                'pool_pre_ping': True,
+                'pool_recycle': 300,
+                'pool_size': 10,
+                'max_overflow': 20,
+            },
+        })
 
     @classmethod
     def tearDownClass(cls):

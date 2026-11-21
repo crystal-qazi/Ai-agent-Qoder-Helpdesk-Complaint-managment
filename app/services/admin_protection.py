@@ -479,3 +479,173 @@ class AdminProtectionService:
                 return check
 
         return ProtectionCheck.allow()
+
+    @classmethod
+    def _load_submitted_permissions(cls, requested_permission_ids):
+        """Load the submitted permission IDs from the database.
+
+        Private helper that returns a list of ``Permission`` rows (only
+        those whose ID matches the submitted list).  The caller is
+        responsible for the rest of the validation (missing / inactive
+        / protected).  Splitting the DB access out into a helper lets
+        unit tests patch the lookup without touching an app context.
+        """
+        if not requested_permission_ids:
+            return []
+        return Permission.query.filter(Permission.id.in_(requested_permission_ids)).all()
+
+    @classmethod
+    def can_create_role(cls, actor_user: User, requested_permission_ids,
+                       role_name: str) -> ProtectionCheck:
+        """Validate a new-role creation request before it is committed.
+
+        The rule closes the privilege-escalation gap in which a
+        ``roles.manage`` holder could mint a role carrying permissions
+        they do not personally hold.
+
+        1. Malformed IDs — any non-integer ID is rejected up front.
+        2. Unknown or inactive permissions are rejected so a new role
+           cannot reference a permission that does not exist or has been
+           disabled.
+        3. Strict permission delegation: a non-admin may only grant
+           permissions they *personally hold* (active roles + active
+           permissions).  An administrator is exempt — building a role
+           with any permission is a legitimate admin workflow because
+           the seeded admin role carries the full permission set.
+        4. An ``admin`` role name (case-insensitive) cannot be created by
+           a non-admin, even without any permissions, because the
+           name alone would be ambiguous with the seeded admin role.
+
+        Returns a ``ProtectionCheck``; the caller must reject the form
+        before writing the new Role row.
+        """
+        # 1. Malformed IDs.
+        normalized = []
+        for raw in (requested_permission_ids or []):
+            s = str(raw).strip()
+            if not s.isdigit():
+                check = ProtectionCheck.reject(
+                    'The submitted permission selection contains a value that is not a valid permission ID.',
+                    f'malformed_permission_id_submitted:{raw}',
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_role_creation',
+                    entity_type='role',
+                    entity_id=None,
+                    entity_repr=role_name,
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
+            normalized.append(int(s))
+
+        # 1b. Duplicate IDs are harmless (the route stores a de-duplicated
+        #     set) but are recorded so an operator can spot form errors.
+        unique_ids = list(dict.fromkeys(normalized))
+
+        # 2. Exist + active.
+        submitted = cls._load_submitted_permissions(unique_ids)
+        if unique_ids:
+            found_ids = {p.id for p in submitted}
+            active_perms = [p for p in submitted if p.is_active]
+            active_ids = {p.id for p in active_perms}
+
+            missing = set(unique_ids) - found_ids
+            if missing:
+                check = ProtectionCheck.reject(
+                    'One or more selected permissions do not exist.',
+                    f'unknown_permission_ids:{sorted(missing)}',
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_role_creation',
+                    entity_type='role',
+                    entity_id=None,
+                    entity_repr=role_name,
+                    new_values={'unknown_permission_ids': sorted(missing)},
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
+
+            inactive = set(unique_ids) - active_ids
+            if inactive:
+                inactive_names = [p.name for p in submitted if p.id in inactive]
+                check = ProtectionCheck.reject(
+                    'Cannot assign inactive permission(s): ' + ', '.join(inactive_names),
+                    f'inactive_permission_ids:{sorted(inactive)}',
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_role_creation',
+                    entity_type='role',
+                    entity_id=None,
+                    entity_repr=role_name,
+                    new_values={'inactive_permission_ids': sorted(inactive),
+                                'inactive_permission_names': inactive_names},
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
+
+        # 3. Strict permission delegation: a role may only carry
+        #    permissions the actor *personally holds* (active roles +
+        #    active permissions).  This closes the escalation gap in
+        #    which a ``roles.manage`` holder could mint a role granting
+        #    a permission they do not have themselves.  Administrators
+        #    are exempt — granting a role the permissions an admin holds
+        #    is a legitimate system-management workflow (see the seeded
+        #    admin role, which carries the full permission set).
+        actor_is_admin = actor_user.has_role(ADMIN_ROLE_NAME)
+        if not actor_is_admin and unique_ids:
+            actor_perm_ids = {p.id for p in actor_user.get_permissions()}
+            not_held = set(unique_ids) - actor_perm_ids
+            if not_held:
+                # Resolve the names for the audit trail; fall back to the
+                # IDs when a permission no longer exists.
+                by_id = {p.id: p.name for p in submitted}
+                not_held_names = [by_id.get(pid, str(pid)) for pid in sorted(not_held)]
+                check = ProtectionCheck.reject(
+                    'Cannot grant a permission you do not personally hold. '
+                    'A role may only carry permissions already assigned to you.',
+                    'permission_not_delegable:{0}'.format(
+                        ','.join(sorted(not_held_names))),
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_role_creation',
+                    entity_type='role',
+                    entity_id=None,
+                    entity_repr=role_name,
+                    new_values={'not_delegable_permission_ids': sorted(not_held),
+                                'not_delegable_permission_names': not_held_names},
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
+
+        # 4. Admin role name guard: no non-admin may create a role whose
+        #    normalized name matches ADMIN_ROLE_NAME.
+        if not actor_is_admin and str(role_name).casefold() == ADMIN_ROLE_NAME.casefold():
+            check = ProtectionCheck.reject(
+                'Only administrators may create a role named "admin".',
+                'admin_role_name_escalation_blocked',
+            )
+            cls._log_blocked(
+                user_id=actor_user.id,
+                action='blocked_role_creation',
+                entity_type='role',
+                entity_id=None,
+                entity_repr=role_name,
+                error_message=check.audit_reason,
+                severity='warning',
+                category='security',
+            )
+            return check
+
+        return ProtectionCheck.allow()

@@ -51,6 +51,24 @@ def _target_database():
     return test_db_name
 
 
+def _build_database_url(target):
+    """Build the validated test-database URI from the DB_* settings.
+
+    The application builds its own URI from DB_HOST/DB_PORT/DB_USER/
+    DB_PASSWORD; this helper produces the same shape for the isolated
+    test schema so it can be handed to the app factory explicitly.
+    """
+    from sqlalchemy.engine import URL
+    return URL.create(
+        'mysql+pymysql',
+        username=os.environ.get('DB_USER', '').strip(),
+        password=os.environ.get('DB_PASSWORD', ''),
+        host=os.environ.get('DB_HOST', 'localhost').strip().lower(),
+        port=int(os.environ.get('DB_PORT', '3306')),
+        database=target,
+    )
+
+
 def main():
     """Entry point: validate the test-only target, then run the rebuild."""
     if os.environ.get('TARGET_TEST_DB') != '1':
@@ -68,13 +86,16 @@ def main():
     db_password = os.environ.get('DB_PASSWORD', '')
     if not db_user or db_user.lower() == 'root' or not db_password:
         raise SystemExit('Set a non-root DB_USER and non-empty DB_PASSWORD for the disposable test database.')
-    from sqlalchemy.engine import URL
-    database_url = URL.create('mysql+pymysql', username=db_user,
-        password=db_password, host=host,
-        port=int(os.environ.get('DB_PORT', '3306')), database=target)
+    database_url = _build_database_url(target)
+    # ``TEST_DB_NAME`` is retained so _do_rebuild can verify the connected
+    # schema identity before dropping anything.
     os.environ['TEST_DB_NAME'] = target
-    os.environ['DATABASE_URL'] = database_url.render_as_string(hide_password=False)
-    _do_rebuild()
+    # NOTE: the application no longer reads ``DATABASE_URL`` (it builds the
+    # URI from DB_HOST/DB_PORT/DB_USER/DB_PASSWORD and a fixed database
+    # name per environment).  The validated test URI is therefore handed to
+    # the app factory explicitly via ``config_overrides`` instead of being
+    # smuggled through an environment variable the app ignores.
+    _do_rebuild(database_url)
 
 
 PERMISSIONS = [
@@ -217,6 +238,16 @@ SETTINGS = [
 
 
 def table_counts():
+    """Print per-table row counts for the operator to eyeball the result.
+
+    The database helpers are imported here (rather than at module import
+    time) because the script's safety guard must be able to refuse to run
+    before any SQLAlchemy app object is constructed.  Run inside an active
+    application context (see ``_do_rebuild``).
+    """
+    from sqlalchemy import text
+    from app.extensions import db
+
     tables = [
         'users', 'roles', 'permissions', 'departments', 'categories',
         'statuses', 'priorities', 'sla_policies', 'working_schedules',
@@ -230,11 +261,13 @@ def table_counts():
             print(f'  {name}: ERROR {exc}')
 
 
-def _do_rebuild():
+def _do_rebuild(database_url):
     """Perform the destructive schema reset + seed against the target DB.
 
-    ``create_app`` reads ``SQLALCHEMY_DATABASE_URI`` from the environment,
-    which main() has already pointed at the validated test database.
+    ``database_url`` is the already-validated test-database URI built from
+    DB_HOST/DB_PORT/DB_USER/DB_PASSWORD in :func:`main`.  It is passed to
+    the app factory as an explicit override so the reset can never reach
+    the fixed development or production schema.
     """
     from sqlalchemy import text
 
@@ -250,7 +283,9 @@ def _do_rebuild():
         Notification, AuditLog, SystemSetting,
     )
 
-    app = create_app(os.environ.get('FLASK_ENV', 'development'))
+    app = create_app('development', {
+        'SQLALCHEMY_DATABASE_URI': database_url,
+    })
     with app.app_context():
         # Fail-closed: confirm we are talking to the target test database.
         target = os.environ.get('TEST_DB_NAME')

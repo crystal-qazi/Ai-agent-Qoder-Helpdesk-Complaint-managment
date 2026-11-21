@@ -478,6 +478,13 @@ class TestProductionConfigSecretValidation(unittest.TestCase):
     def test_long_random_secret_key_accepted(self):
         from app.config import ProductionConfig
         cfg = ProductionConfig()
+        # Supply a valid least-privilege-shaped URL too: production startup
+        # correctly rejects a blank database password independently of the key.
+        from sqlalchemy.engine import URL
+        cfg.SQLALCHEMY_DATABASE_URI = URL.create(
+            'mysql+pymysql', username='helpdesk_app', password='test-only',
+            host='localhost', database='Helpdesk_qoder_prod',
+        )
         # A 64-char hex value with no placeholder markers.
         with unittest.mock.patch.dict(os.environ, {'SECRET_KEY': 'a' * 64}, clear=False):
             self._validate(cfg)

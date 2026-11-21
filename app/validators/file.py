@@ -127,9 +127,13 @@ def validate_file_download(attachment, user):
         return False, 'File not found on server.'
 
     # Refuse to serve any path that escapes the configured upload root.
-    root = os.path.abspath(current_app.config.get('UPLOAD_FOLDER', 'uploads'))
-    target = os.path.abspath(attachment.storage_path)
-    if os.path.commonpath([root, target]) != root:
+    root = os.path.realpath(current_app.config.get('UPLOAD_FOLDER', 'uploads'))
+    target = os.path.realpath(attachment.storage_path)
+    try:
+        if os.path.commonpath([root, target]) != root or not os.path.isfile(target):
+            return False, 'Invalid storage path.'
+    except ValueError:
+        # Different Windows drives cannot share a common path.
         return False, 'Invalid storage path.'
 
     return True, None
