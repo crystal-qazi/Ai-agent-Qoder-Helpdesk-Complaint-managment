@@ -1,4 +1,11 @@
-"""Database setup - creates SQLite database with all tables and seed data."""
+"""Database setup - creates SQLite database with all tables and seed data.
+
+DEPRECATED: This script rewrites a SQLite file used by an earlier build.
+The application now targets MySQL via the SQLAlchemy models, and the
+canonical rebuild is ``scripts/reset_and_seed.py``.  Retained only for
+historical local SQLite scratchpads; do NOT run it against a
+production database.
+"""
 import os
 import sqlite3
 import json
@@ -7,10 +14,20 @@ from werkzeug.security import generate_password_hash
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, 'instance', 'helpdesk.db')
 
+
 def create_tables():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    # Fail-closed: refuse to touch a production MySQL database.
+    if os.environ.get('FLASK_ENV', 'development').lower() == 'production':
+        raise SystemExit(
+            'setup_db.py is a legacy SQLite scratchpad. It will not '
+            'rebuild a production schema. Use scripts/reset_and_seed.py '
+            'against a dedicated helpdesk_*_test database instead.'
+        )
+    if os.environ.get('TARGET_TEST_DB') != '1' or os.environ.get('ALLOW_SQLITE_RESET') != '1':
+        raise SystemExit('Refusing SQLite setup without TARGET_TEST_DB=1 and ALLOW_SQLITE_RESET=1.')
     if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
+        raise SystemExit(f'Refusing to delete existing SQLite data at {DB_PATH}; back it up or move it manually.')
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -94,7 +111,10 @@ def create_tables():
         display_order INTEGER NOT NULL DEFAULT 0, description TEXT, is_terminal INTEGER DEFAULT 0,
         is_active INTEGER DEFAULT 1, notify_assigned INTEGER DEFAULT 0,
         require_resolution_summary INTEGER DEFAULT 0, allow_reopen INTEGER DEFAULT 0,
-        allowed_next_statuses TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        allowed_next_statuses TEXT, allowed_transitions TEXT DEFAULT NULL,
+        category VARCHAR(20), is_initial INTEGER DEFAULT 0,
+        requires_reason INTEGER DEFAULT 0, requires_resolution INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP, created_by_user_id INTEGER,
         updated_by_user_id INTEGER, deleted_at DATETIME, deleted_by_user_id INTEGER,
         version INTEGER DEFAULT 1)''')
@@ -208,43 +228,72 @@ def seed_data():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
 
-    # Permissions
+    # Permissions — using dot notation consistently (code calls has_permission('complaints.assign'), etc.)
     perms = [
-        ('dashboard:view', 'View Dashboard', 'dashboard', 'view'),
-        ('dashboard:analytics', 'View Analytics', 'dashboard', 'analytics'),
-        ('complaints:create', 'Create Complaint', 'complaints', 'create'),
-        ('complaints:view', 'View Complaints', 'complaints', 'view'),
-        ('complaints:edit', 'Edit Complaints', 'complaints', 'edit'),
-        ('complaints:assign', 'Assign Complaints', 'complaints', 'assign'),
-        ('complaints:close', 'Close Complaints', 'complaints', 'close'),
-        ('complaints:delete', 'Delete Complaints', 'complaints', 'delete'),
-        ('users:view', 'View Users', 'users', 'view'),
-        ('users:create', 'Create Users', 'users', 'create'),
-        ('users:edit', 'Edit Users', 'users', 'edit'),
-        ('users:delete', 'Delete Users', 'users', 'delete'),
-        ('admin:view', 'View Admin Panel', 'admin', 'view'),
-        ('admin:manage_departments', 'Manage Departments', 'admin', 'manage_departments'),
-        ('admin:manage_software', 'Manage Software Catalog', 'admin', 'manage_software'),
-        ('admin:manage_categories', 'Manage Categories', 'admin', 'manage_categories'),
-        ('admin:manage_priorities', 'Manage Priorities', 'admin', 'manage_priorities'),
-        ('admin:manage_statuses', 'Manage Statuses', 'admin', 'manage_statuses'),
-        ('admin:manage_sla', 'Manage SLA Policies', 'admin', 'manage_sla'),
-        ('admin:manage_schedules', 'Manage Working Schedules', 'admin', 'manage_schedules'),
-        ('admin:manage_holidays', 'Manage Holidays', 'admin', 'manage_holidays'),
-        ('admin:manage_settings', 'Manage System Settings', 'admin', 'manage_settings'),
-        ('reports:view', 'View Reports', 'reports', 'view'),
-        ('reports:export', 'Export Reports', 'reports', 'export'),
-        ('notifications:view', 'View Notifications', 'notifications', 'view'),
+        ('dashboard.view', 'View Dashboard', 'dashboard', 'view'),
+        ('dashboard.analytics', 'View Analytics', 'dashboard', 'analytics'),
+        ('complaints.create', 'Create Complaint', 'complaints', 'create'),
+        ('complaints.view_all', 'View All Complaints', 'complaints', 'view_all'),
+        ('complaints.view_my', 'View My Complaints', 'complaints', 'view_my'),
+        ('complaints.edit', 'Edit Complaint', 'complaints', 'edit'),
+        ('complaints.assign', 'Assign Complaint', 'complaints', 'assign'),
+        ('complaints.transfer', 'Transfer Complaint', 'complaints', 'transfer'),
+        ('complaints.change_status_own', 'Change Status of Own Complaints', 'complaints', 'change_status_own'),
+        ('complaints.change_status_all', 'Change Status of Any Complaint', 'complaints', 'change_status_all'),
+        ('complaints.status_unlock', 'Access Restricted Statuses', 'complaints', 'status_unlock'),
+        ('complaints.delete', 'Delete Complaints', 'complaints', 'delete'),
+        ('users.view', 'View Users', 'users', 'view'),
+        ('users.create', 'Create Users', 'users', 'create'),
+        ('users.edit', 'Edit Users', 'users', 'edit'),
+        ('users.delete', 'Delete Users', 'users', 'delete'),
+        ('admin.view', 'View Admin Panel', 'admin', 'view'),
+        ('admin.manage_departments', 'Manage Departments', 'admin', 'manage_departments'),
+        ('admin.manage_software', 'Manage Software Catalog', 'admin', 'manage_software'),
+        ('admin.manage_categories', 'Manage Categories', 'admin', 'manage_categories'),
+        ('admin.manage_priorities', 'Manage Priorities', 'admin', 'manage_priorities'),
+        ('admin.manage_statuses', 'Manage Statuses', 'admin', 'manage_statuses'),
+        ('admin.manage_sla', 'Manage SLA Policies', 'admin', 'manage_sla'),
+        ('admin.manage_schedules', 'Manage Working Schedules', 'admin', 'manage_schedules'),
+        ('admin.manage_holidays', 'Manage Holidays', 'admin', 'manage_holidays'),
+        ('admin.manage_settings', 'Manage System Settings', 'admin', 'manage_settings'),
+        ('reports.view', 'View Reports', 'reports', 'view'),
+        ('reports.export', 'Export Reports', 'reports', 'export'),
+        ('notifications.view', 'View Notifications', 'notifications', 'view'),
+        # Comment permissions
+        ('comments.add_internal', 'Add Internal Comments', 'comments', 'add_internal'),
+        ('comments.add_reporter_visible', 'Add Reporter-Visible Comments', 'comments', 'add_reporter_visible'),
+        ('comments.view_internal', 'View Internal Comments', 'comments', 'view_internal'),
+        # Attachment permissions
+        ('attachments.upload', 'Upload Attachments', 'attachments', 'upload'),
+        ('attachments.download_all', 'Download All Attachments', 'attachments', 'download_all'),
+        ('attachments.delete', 'Delete Attachments', 'attachments', 'delete'),
+        ('attachments.delete_own', 'Delete Own Attachments', 'attachments', 'delete_own'),
+        # Admin/management permissions
+        ('users.manage', 'Manage Users', 'users', 'manage'),
+        ('roles.manage', 'Manage Roles', 'roles', 'manage'),
+        ('permissions.manage', 'Manage Permissions', 'permissions', 'manage'),
+        ('departments.manage', 'Manage Departments', 'departments', 'manage'),
+        ('software.manage', 'Manage Software', 'software', 'manage'),
+        ('categories.manage', 'Manage Categories', 'categories', 'manage'),
+        ('priorities.manage', 'Manage Priorities', 'priorities', 'manage'),
+        ('statuses.manage', 'Manage Statuses', 'statuses', 'manage'),
+        ('sla.manage', 'Manage SLA Policies', 'sla', 'manage'),
+        ('audit.view', 'View Audit Logs', 'audit', 'view'),
+        ('settings.manage', 'Manage Settings', 'settings', 'manage'),
+        ('config.manage', 'Manage Configuration', 'config', 'manage'),
     ]
     for n, d, m, a in perms:
         c.execute('INSERT OR IGNORE INTO permissions (name, display_name, module, action) VALUES (?, ?, ?, ?)', (n, d, m, a))
     print(f'Inserted {len(perms)} permissions')
 
     # Roles
+    all_perms = [p[0] for p in perms]
     roles = [
-        ('admin', 'Administrator', 1, ['dashboard:view', 'dashboard:analytics', 'complaints:create', 'complaints:view', 'complaints:edit', 'complaints:assign', 'complaints:close', 'complaints:delete', 'users:view', 'users:create', 'users:edit', 'users:delete', 'admin:view', 'admin:manage_departments', 'admin:manage_software', 'admin:manage_categories', 'admin:manage_priorities', 'admin:manage_statuses', 'admin:manage_sla', 'admin:manage_schedules', 'admin:manage_holidays', 'admin:manage_settings', 'reports:view', 'reports:export', 'notifications:view']),
-        ('support', 'Support Agent', 0, ['dashboard:view', 'complaints:create', 'complaints:view', 'complaints:edit', 'complaints:assign', 'complaints:close', 'reports:view', 'reports:export', 'notifications:view']),
-        ('user', 'End User', 0, ['dashboard:view', 'complaints:create', 'complaints:view', 'notifications:view']),
+        ('admin', 'Administrator', 1, all_perms),
+        ('helpdesk_agent', 'Helpdesk Agent', 0, ['dashboard.view', 'dashboard.analytics', 'complaints.create', 'complaints.view_all', 'complaints.view_my', 'complaints.edit', 'complaints.assign', 'complaints.transfer', 'complaints.change_status_own', 'complaints.change_status_all', 'complaints.status_unlock', 'comments.add_internal', 'comments.add_reporter_visible', 'comments.view_internal', 'attachments.upload', 'attachments.download_all', 'reports.view', 'reports.export', 'notifications.view']),
+        ('support_agent', 'Support Agent', 0, ['dashboard.view', 'dashboard.analytics', 'complaints.create', 'complaints.view_my', 'complaints.edit', 'complaints.transfer', 'complaints.change_status_own', 'comments.add_internal', 'comments.add_reporter_visible', 'comments.view_internal', 'attachments.upload', 'attachments.download_all', 'reports.view', 'reports.export', 'notifications.view']),
+        ('user', 'End User', 0, ['dashboard.view', 'complaints.create', 'comments.add_reporter_visible', 'notifications.view']),
+        ('employee', 'Internal Employee', 0, ['dashboard.view', 'complaints.create', 'complaints.view_my', 'notifications.view']),
     ]
     for n, d, s, pcs in roles:
         c.execute('INSERT OR IGNORE INTO roles (name, display_name, is_system) VALUES (?, ?, ?)', (n, d, s))
@@ -265,9 +314,19 @@ def seed_data():
         print(f'Created admin user (ID: {aid})')
 
     # Statuses
-    statuses = [('New', 'new', '#3b82f6', 1, 1, 0), ('Assigned', 'assigned', '#8b5cf6', 2, 1, 0), ('In Progress', 'in_progress', '#f59e0b', 3, 1, 0), ('Pending Info', 'pending_info', '#f97316', 4, 1, 0), ('On Hold', 'on_hold', '#6b7280', 5, 1, 0), ('Resolved', 'resolved', '#10b981', 6, 1, 1), ('Closed', 'closed', '#6b7280', 7, 1, 1), ('Reopened', 'reopened', '#ef4444', 8, 1, 0), ('Rejected', 'rejected', '#dc2626', 9, 1, 1)]
-    for n, code, color, order, terminal, active in statuses:
-        c.execute('INSERT OR IGNORE INTO statuses (name, code, color, display_order, is_terminal, is_active) VALUES (?, ?, ?, ?, ?, ?)', (n, code, color, order, terminal, active))
+    statuses = [
+        ('New', 'new', '#3b82f6', 1, 0, 0, '[2,3,4,5,6,9]', 'intake', 1, 0, 0),
+        ('Assigned', 'assigned', '#8b5cf6', 2, 0, 0, '[3,4,5,7]', 'processing', 0, 0, 0),
+        ('In Progress', 'in_progress', '#f59e0b', 3, 0, 0, '[4,5,6]', 'processing', 0, 0, 0),
+        ('Pending Info', 'pending_info', '#f97316', 4, 0, 0, '[3,5,6]', 'pending', 0, 0, 0),
+        ('On Hold', 'on_hold', '#6b7280', 5, 0, 0, '[3,4,6]', 'processing', 0, 0, 0),
+        ('Resolved', 'resolved', '#10b981', 6, 0, 1, '[8]', 'resolution', 0, 0, 1),
+        ('Closed', 'closed', '#6b7280', 7, 1, 0, '[]', 'resolution', 0, 0, 0),
+        ('Reopened', 'reopened', '#ef4444', 8, 0, 0, '[3,4,5,6]', 'processing', 0, 0, 0),
+        ('Rejected', 'rejected', '#dc2626', 9, 1, 1, '[]', 'resolution', 0, 1, 0),
+    ]
+    for n, code, color, order, terminal, active, transitions, category, is_init, req_reason, req_res in statuses:
+        c.execute('INSERT OR IGNORE INTO statuses (name, code, color, display_order, is_terminal, is_active, allowed_transitions, category, is_initial, requires_reason, requires_resolution) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (n, code, color, order, terminal, active, transitions, category, is_init, req_reason, req_res))
     print(f'Inserted {len(statuses)} statuses')
 
     # Priorities

@@ -19,15 +19,29 @@ instance/
 .env
 .env.local
 .env.production
+.env.mysql
+.env.development
+.env.test
+.env.testing
 
 # Database
 *.db
 *.sqlite
 *.sqlite3
 
-# Migrations
-migrations/versions/*.py
-!migrations/versions/__init__.py
+# Database dumps/backups: never commit real data. The two empty placeholder
+# files already tracked by older commits are force-tracked via negation so
+# their (empty) state stays in the repo; any real dump content is ignored.
+helpdesk_qoder_dev_backup_before_migration.sql
+**/*_backup*.sql
+**/*_before_migration*.sql
+!**/helpdesk_qoder.sql
+!**/production_before_migration.sql
+
+# Migrations: keep the tracked revision files; ignore Alembic scaffolding.
+migrations/versions/__pycache__/
+migrations/alembic.ini
+!migrations/versions/*.py
 
 # Logs
 logs/

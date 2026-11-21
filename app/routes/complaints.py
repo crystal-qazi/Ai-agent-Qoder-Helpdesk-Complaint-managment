@@ -1,5 +1,5 @@
 """Complaint management routes."""
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, abort, current_app
 from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 import os
@@ -11,28 +11,58 @@ from app.models import (
     User, Comment, Attachment, ComplaintAssignment, ComplaintStatusHistory
 )
 from app.validators.complaint import validate_complaint_data, validate_status_transition, validate_assignment_data, validate_comment_data
-from app.validators.file import validate_file_upload, generate_stored_filename, sanitize_filename
+from app.validators.file import validate_file_upload, validate_file_download, generate_stored_filename, sanitize_filename
 from app.permissions.decorators import (
     can_view_complaint, can_edit_complaint, can_assign_complaint,
-    can_resolve_complaint, can_close_complaint, can_reopen_complaint,
-    can_view_all_complaints
+    can_change_status_complaint, can_view_all_complaints
 )
 from app.permissions.policy import PermissionPolicy
 from app.services.complaint import ComplaintService
 from app.services.sla import SLAService
 from app.services.audit import AuditService
+from app.error_handling import log_unexpected_error, user_error_message
 
 
 complaints_bp = Blueprint('complaints', __name__, url_prefix='/complaints')
+
+
+def _parse_optional_int_fields(data, fields):
+    """Parse submitted integer fields without turning bad input into HTTP 500."""
+    try:
+        for field in fields:
+            value = data.get(field)
+            if value not in (None, ''):
+                data[field] = int(value)
+        return True
+    except (TypeError, ValueError):
+        return False
 
 
 @complaints_bp.route('/')
 @login_required
 def list_complaints():
     """List complaints with search and filters."""
+    # Guard: users who cannot view all complaints may only access the unfiltered
+    # view through "My Complaints". Restrict their base query to complaints they
+    # reported or are assigned to, instead of an empty page.
+    unfiltered = not any([
+        request.args.get('assigned_to_user_id', type=int),
+        request.args.get('reported_by_user_id', type=int),
+        request.args.get('search', '').strip(),
+        request.args.get('status_id', type=int),
+        request.args.get('sla_status'),
+    ])
+    if unfiltered and not current_user.has_permission('complaints.view_all'):
+        query_params_override = {
+            'my_complaints': True,
+        }
+    else:
+        query_params_override = {}
+
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
-    
+    is_my_view = request.args.get('my') in ('1', 'true', 'True')
+
     # Build query params
     query_params = {
         'search': request.args.get('search', '').strip() or None,
@@ -48,6 +78,9 @@ def list_complaints():
         'date_to': request.args.get('date_to') or None,
         'sla_status': request.args.get('sla_status') or None,
     }
+    if is_my_view:
+        query_params['my_complaints'] = True
+    query_params.update(query_params_override)
     
     # Parse dates
     for key in ['date_from', 'date_to']:
@@ -94,14 +127,29 @@ def create_complaint():
     if request.method == 'POST':
         data = request.form.to_dict()
         
-        # Convert lists
-        data['category_id'] = int(data['category_id']) if data.get('category_id') else None
-        data['priority_id'] = int(data['priority_id']) if data.get('priority_id') else None
-        data['department_id'] = int(data['department_id']) if data.get('department_id') else None
-        data['software_id'] = int(data['software_id']) if data.get('software_id') else None
-        data['reported_by_user_id'] = int(data['reported_by_user_id']) if data.get('reported_by_user_id') else current_user.id
-        data['assigned_to_user_id'] = int(data['assigned_to_user_id']) if data.get('assigned_to_user_id') else None
-        data['affected_users_count'] = int(data['affected_users_count']) if data.get('affected_users_count') else 1
+        # Parse numeric values defensively; malformed client input must
+        # produce a validation response instead of an unhandled exception.
+        if not _parse_optional_int_fields(data, [
+            'category_id', 'priority_id', 'department_id', 'software_id',
+            'reported_by_user_id', 'assigned_to_user_id', 'affected_users_count',
+        ]):
+            flash('One or more numeric fields contain an invalid value.', 'danger')
+            return redirect(url_for('complaints.create_complaint'))
+        data['affected_users_count'] = data.get('affected_users_count') or 1
+
+        # Reporter identity: ordinary users can only file for themselves.
+        # Privileged users (complaints.view_all) may file on behalf of another
+        # active user, but the selection must exist and be active.
+        if current_user.has_permission('complaints.view_all'):
+            selected_reporter_id = data.get('reported_by_user_id') or current_user.id
+            reporter = User.query.filter_by(id=selected_reporter_id, is_active=True).first()
+            if reporter is None:
+                flash('Selected reporter does not exist or is inactive.', 'danger')
+                return redirect(url_for('complaints.create_complaint'))
+            data['reported_by_user_id'] = selected_reporter_id
+        else:
+            data['reported_by_user_id'] = current_user.id
+
         
         # Parse incident_started_at
         if data.get('incident_started_at'):
@@ -119,7 +167,9 @@ def create_complaint():
                 return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating complaint: {str(e)}', 'danger')
+                log_unexpected_error('create complaint', e,
+                                     reported_by_user_id=data.get('reported_by_user_id'))
+                flash(user_error_message('create the complaint'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -211,10 +261,12 @@ def edit_complaint(complaint_id):
     if request.method == 'POST':
         data = request.form.to_dict()
         
-        # Convert types
-        for field in ['category_id', 'priority_id', 'department_id', 'software_id', 'affected_users_count']:
-            if data.get(field):
-                data[field] = int(data[field])
+        # Convert numeric values defensively.
+        if not _parse_optional_int_fields(
+            data, ['category_id', 'priority_id', 'department_id', 'software_id', 'affected_users_count']
+        ):
+            flash('One or more numeric fields contain an invalid value.', 'danger')
+            return redirect(url_for('complaints.edit_complaint', complaint_id=complaint.id))
         
         if data.get('incident_started_at'):
             try:
@@ -231,7 +283,9 @@ def edit_complaint(complaint_id):
                 return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating complaint: {str(e)}', 'danger')
+                log_unexpected_error('update complaint', e,
+                                     complaint_id=complaint.id)
+                flash(user_error_message('update the complaint'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -259,8 +313,12 @@ def assign_complaint(complaint_id):
     complaint = Complaint.query.get_or_404(complaint_id)
     
     data = request.form.to_dict()
-    data['new_assignee_id'] = int(data['new_assignee_id']) if data.get('new_assignee_id') else None
-    
+    try:
+        data['new_assignee_id'] = int(data['new_assignee_id']) if data.get('new_assignee_id') else None
+    except (TypeError, ValueError):
+        flash('Invalid assignee identifier.', 'danger')
+        return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
+
     errors = validate_assignment_data(data)
     
     if not errors:
@@ -287,17 +345,30 @@ def assign_complaint(complaint_id):
 def change_status(complaint_id):
     """Change complaint status."""
     complaint = Complaint.query.get_or_404(complaint_id)
-    
+
+    # Access: the user must be able to view this complaint AND hold a
+    # status-change permission.  The detailed per-status check runs in
+    # ComplaintService.change_status via PermissionPolicy.can_change_status.
+    if not PermissionPolicy.can_view_complaint(current_user, complaint):
+        abort(403)
+    if not (current_user.has_permission('complaints.change_status_own')
+            or current_user.has_permission('complaints.change_status_all')):
+        abort(403)
+
     data = request.form.to_dict()
-    new_status_id = int(data['status_id']) if data.get('status_id') else None
-    
+    try:
+        new_status_id = int(data['status_id']) if data.get('status_id') else None
+    except (TypeError, ValueError):
+        flash('Invalid status identifier.', 'danger')
+        return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
+
     if not new_status_id:
         flash('Status is required.', 'danger')
         return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
-    
+
     errors = validate_status_transition(complaint, new_status_id, current_user,
                                         data.get('resolution_summary'))
-    
+
     if not errors:
         success, message = ComplaintService.change_status(
             complaint,
@@ -313,23 +384,43 @@ def change_status(complaint_id):
     else:
         for field, error in errors.items():
             flash(error, 'danger')
-    
+
     return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
 
 
 @complaints_bp.route('/<int:complaint_id>/comment', methods=['POST'])
 @login_required
 def add_comment(complaint_id):
-    """Add a comment to a complaint."""
+    """Add a comment to a complaint.
+
+    Visibility rules:
+
+      * Internal comments require ``comments.add_internal`` OR the
+        assignee role.  An internal comment on a reporter's own
+        complaint is still blocked when the reporter is the only
+        participant — the reporter cannot "leak" internal notes to
+        themselves.
+      * Reporter-visible comments require ``comments.add_reporter_visible``
+        OR reporter ownership.
+    """
     complaint = Complaint.query.get_or_404(complaint_id)
-    
+    if not PermissionPolicy.can_view_complaint(current_user, complaint):
+        abort(403)
+
     data = request.form.to_dict()
     content = data.get('content', '').strip()
     visibility = data.get('visibility', 'internal')
-    
+
     errors = validate_comment_data({'content': content, 'visibility': visibility})
-    
+
     if not errors:
+        if visibility == 'internal':
+            if not PermissionPolicy.can_add_internal_comment(current_user, complaint):
+                abort(403)
+        else:
+            if not PermissionPolicy.can_add_reporter_visible_comment(current_user, complaint):
+                abort(403)
+
         success, message = ComplaintService.add_comment(complaint, content, current_user, visibility)
         if success:
             flash(message, 'success')
@@ -338,7 +429,7 @@ def add_comment(complaint_id):
     else:
         for field, error in errors.items():
             flash(error, 'danger')
-    
+
     return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
 
 
@@ -347,37 +438,40 @@ def add_comment(complaint_id):
 def upload_attachment(complaint_id):
     """Upload an attachment to a complaint."""
     complaint = Complaint.query.get_or_404(complaint_id)
-    
+
+    # Access: reporter, assignee, or anyone with attachments.upload.
+    if not PermissionPolicy.can_view_complaint(current_user, complaint):
+        abort(403)
+    if not PermissionPolicy.can_upload_attachment(current_user, complaint):
+        abort(403)
+
     if 'file' not in request.files:
         flash('No file selected.', 'danger')
         return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
-    
+
     file = request.files['file']
     description = request.form.get('description', '').strip()
     is_confidential = 'is_confidential' in request.form
-    
+
     errors, file_info = validate_file_upload(file)
-    
+
     if not errors:
         # Generate stored filename
         stored_filename = generate_stored_filename(file_info['original_filename'])
-        
-        # Ensure upload directory exists
-        # Absolute path: send_file resolves relative paths against the app package, not the CWD
+
+        # Ensure upload directory exists (absolute path)
         upload_dir = os.path.abspath(os.path.join(current_app.config['UPLOAD_FOLDER'], 'complaints', str(complaint_id)))
         os.makedirs(upload_dir, exist_ok=True)
-        
+
         storage_path = os.path.join(upload_dir, stored_filename)
-        
-        # Save file
+
         file.seek(0)
         file.save(storage_path)
-        
-        # Update file_info with storage details
-        file_info['original_filename'] = file.filename
+
+        file_info['original_filename'] = sanitize_filename(file.filename)
         file_info['stored_filename'] = stored_filename
         file_info['storage_path'] = storage_path
-        
+
         success, message = ComplaintService.add_attachment(
             complaint, file_info, current_user, description, is_confidential
         )
@@ -391,7 +485,7 @@ def upload_attachment(complaint_id):
     else:
         for field, error in errors.items():
             flash(error, 'danger')
-    
+
     return redirect(url_for('complaints.view_complaint', complaint_id=complaint.id))
 
 
@@ -406,9 +500,11 @@ def download_attachment(complaint_id, attachment_id):
     if attachment.complaint_id != complaint_id:
         abort(404)
     
-    if not PermissionPolicy.can_download_attachment(current_user, attachment):
-        abort(403)
-    if not os.path.exists(attachment.storage_path):
+    allowed, reason = validate_file_download(attachment, current_user)
+    if not allowed:
+        # Keep authorization failures distinct from missing/unsafe storage.
+        if reason and 'permission' in reason.lower():
+            abort(403)
         abort(404)
     
     # Update download count
@@ -482,8 +578,3 @@ def api_search():
         })
     
     return jsonify(data)
-
-
-# Import needed for query
-from app.extensions import db
-from flask import current_app

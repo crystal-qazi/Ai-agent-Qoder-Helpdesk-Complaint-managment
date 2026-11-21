@@ -1,17 +1,29 @@
-from flask import Flask
-from app.config import config
+from flask import Flask, redirect, url_for, flash, request
+from flask_login import current_user
+from app.config import config, ProductionConfig, validate_production_env
 from app.extensions import init_extensions
 import os
 
 
-def create_app(config_name=None):
+def create_app(config_name=None, config_overrides=None):
     """Application factory pattern."""
     if config_name is None:
         config_name = os.environ.get('FLASK_ENV', 'default')
-    
+
     app = Flask(__name__)
     app.config.from_object(config[config_name])
-    
+    # Optional overrides are applied before extensions initialize. This is
+    # used by isolated integration tests to target their explicitly validated
+    # test database rather than the fixed development/production databases.
+    if config_overrides:
+        app.config.update(config_overrides)
+
+    # Fail-fast on production misconfigurations (weak SECRET_KEY, root
+    # database credentials).  Dev/test configs keep the lenient defaults
+    # so a fresh clone boots without a .env.
+    if issubclass(config[config_name], ProductionConfig):
+        validate_production_env(config[config_name])
+
     # Initialize extensions
     init_extensions(app)
     
@@ -32,6 +44,49 @@ def create_app(config_name=None):
     app.register_blueprint(reports_bp)
     app.register_blueprint(notifications_bp)
     
+    # Enforce forced password changes server-side. Hiding navigation is not
+    # sufficient: every authenticated endpoint is blocked until the user
+    # changes their password. Keep logout and static assets available.
+    @app.before_request
+    def enforce_password_change():
+        # The legacy reset-token flow is intentionally retained for future
+        # redesign, but must not be exposed in production.
+        if (not app.config.get('PASSWORD_RESET_ENABLED', True)
+                and request.endpoint in {'auth.forgot_password', 'auth.reset_password'}):
+            from flask import abort
+            abort(404)
+
+        if not current_user.is_authenticated or not current_user.must_change_password:
+            return None
+        allowed_endpoints = {'auth.change_password', 'auth.logout', 'static'}
+        if request.endpoint in allowed_endpoints:
+            return None
+        flash('You must change your password before using the system.', 'warning')
+        return redirect(url_for('auth.change_password'))
+
+    # Expose SLA breach checking as an explicit CLI task so Windows
+    # Task Scheduler or cron can run it independently of dashboard visits.
+    @app.cli.command('check-sla-breaches')
+    def check_sla_breaches_command():
+        from app.services.sla import SLAService
+        from app.extensions import db
+        breached = SLAService.check_sla_breaches()
+        db.session.commit()
+        print(f'SLA breach check complete: {len(breached)} new breach events.')
+
+    # Baseline browser security headers. HSTS is emitted only when the
+    # deployment marks cookies secure (HTTPS); CSP is intentionally left to
+    # a later template audit because this UI currently uses inline assets.
+    @app.after_request
+    def add_security_headers(response):
+        response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+        response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+        response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+        response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+        if app.config.get('SESSION_COOKIE_SECURE'):
+            response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000')
+        return response
+
     # Register error handlers
     register_error_handlers(app)
     

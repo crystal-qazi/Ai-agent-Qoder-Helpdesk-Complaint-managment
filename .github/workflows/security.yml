@@ -1,0 +1,134 @@
+name: Security checks
+
+on:
+  push:
+    branches: [development, security-hardening]
+  pull_request:
+    branches: [development]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Compile Python sources
+        run: python -m compileall -q app tests
+      - name: Run unit security and regression tests
+        run: |
+          python -m unittest \
+            tests.unit.test_auth_session_hardening \
+            tests.unit.test_hardening \
+            tests.unit.test_repaired_issues \
+            tests.unit.test_security_fixes \
+            tests.unit.test_error_message_exposure \
+            tests.unit.test_database_configuration \
+            tests.unit.test_password_reset_scope \
+            tests.unit.test_final_findings -v
+
+
+  mysql-integration:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root-password
+          MYSQL_DATABASE: helpdesk_qoder_dev
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pci-root-password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      FLASK_ENV: development
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: ci-root-password
+      TEST_DB_NAME: helpdesk_qoder_test
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Apply Alembic migrations to isolated test database
+        run: |
+          python - <<'PY'
+          import os
+          import pymysql
+          from sqlalchemy.engine import URL
+          from app import create_app
+          from flask_migrate import upgrade
+
+          database = os.environ['TEST_DB_NAME']
+          connection = pymysql.connect(
+              host=os.environ['DB_HOST'],
+              port=int(os.environ['DB_PORT']),
+              user=os.environ['DB_USER'],
+              password=os.environ['DB_PASSWORD'],
+          )
+          try:
+              with connection.cursor() as cursor:
+                  cursor.execute(
+                      f"CREATE DATABASE IF NOT EXISTS `{database}` "
+                      "CHARACTER SET utf8mb4"
+                  )
+              connection.commit()
+          finally:
+              connection.close()
+
+          database_url = URL.create(
+              'mysql+pymysql',
+              username=os.environ['DB_USER'],
+              password=os.environ['DB_PASSWORD'],
+              host=os.environ['DB_HOST'],
+              port=int(os.environ['DB_PORT']),
+              database=database,
+          )
+          app = create_app('development', {
+              'SQLALCHEMY_DATABASE_URI': database_url,
+          })
+          with app.app_context():
+              upgrade(directory='migrations')
+          PY
+      - name: Run isolated MySQL RBAC integration tests
+        run: python -m unittest tests.integration.test_rbac_integration -v
+      - name: Run MySQL administrator concurrency tests
+        run: python -m unittest tests.integration.test_admin_protection_concurrency -v
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pip-audit
+        run: python -m pip install --upgrade pip pip-audit
+      - name: Audit pinned dependencies
+        run: pip-audit -r requirements.txt

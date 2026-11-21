@@ -4,6 +4,14 @@ from app.extensions import db
 from app.models.base import BaseModel, TimestampMixin
 
 
+class ComplaintNumberSequence(db.Model):
+    """Transactional per-year counter for collision-safe complaint numbers."""
+    __tablename__ = 'complaint_number_sequences'
+
+    year = db.Column(db.Integer, primary_key=True)
+    next_number = db.Column(db.Integer, nullable=False, default=1)
+
+
 class Complaint(BaseModel):
     """Main complaint model."""
     __tablename__ = 'complaints'
@@ -72,10 +80,22 @@ class Complaint(BaseModel):
     status = db.relationship('Status', lazy='joined')
     department = db.relationship('Department', lazy='joined')
     software = db.relationship('SoftwareCatalog', lazy='joined')
-    reported_by = db.relationship('User', foreign_keys=[reported_by_user_id], lazy='joined')
-    created_by = db.relationship('User', foreign_keys=[created_by_user_id], lazy='joined')
-    assigned_to = db.relationship('User', foreign_keys=[assigned_to_user_id], lazy='joined')
-    resolved_by = db.relationship('User', foreign_keys=[resolved_by_user_id], lazy='joined')
+    reported_by = db.relationship(
+        'User', foreign_keys=[reported_by_user_id],
+        back_populates='reported_complaints', lazy='joined',
+    )
+    created_by = db.relationship(
+        'User', foreign_keys=[created_by_user_id],
+        back_populates='created_complaints', lazy='joined',
+    )
+    assigned_to = db.relationship(
+        'User', foreign_keys=[assigned_to_user_id],
+        back_populates='assigned_complaints', lazy='joined',
+    )
+    resolved_by = db.relationship(
+        'User', foreign_keys=[resolved_by_user_id],
+        back_populates='resolved_complaints', lazy='joined',
+    )
     escalated_to = db.relationship('User', foreign_keys=[escalated_to_user_id], lazy='joined')
     
     assignments = db.relationship('ComplaintAssignment', backref='complaint', lazy='dynamic', cascade='all, delete-orphan', order_by='ComplaintAssignment.assigned_at.desc()')

@@ -5,6 +5,7 @@ This script never drops tables or creates schema. Alembic owns the schema.
 """
 import os
 import sys
+import argparse
 from getpass import getpass
 from pathlib import Path
 
@@ -94,19 +95,27 @@ def get_or_create(model, lookup, defaults):
     return obj
 
 def main():
-    if os.environ.get("FLASK_ENV", "development").lower() != "development":
-        raise SystemExit("Blocked: demo seeding is development-only. Set FLASK_ENV=development.")
-    app = create_app("development")
+    parser = argparse.ArgumentParser(description="Seed Helpdesk reference data.")
+    parser.add_argument(
+        "--production",
+        action="store_true",
+        help="Seed production reference data and an admin only; do not create demo users or complaints.",
+    )
+    args = parser.parse_args()
+    environment = "production" if args.production else "development"
+    expected_database = "Helpdesk_qoder_prod" if args.production else "helpdesk_qoder_dev"
+    app = create_app(environment)
+
     with app.app_context():
         with db.engine.connect() as conn:
             actual_db = conn.exec_driver_sql("SELECT DATABASE()").scalar()
-        if actual_db != "helpdesk_qoder_dev":
+        if actual_db != expected_database:
             raise SystemExit(
-                f"Wrong database: connected to {actual_db!r}; expected 'helpdesk_qoder_dev'. "
+                f"Wrong database: connected to {actual_db!r}; expected {expected_database!r}. "
                 "No seed data was written."
             )
         print(f"Target database: {actual_db}")
-        print("This script adds demo data only; it does not drop tables or run DDL.")
+        print("No tables will be dropped or created. Run flask db upgrade first.")
 
         # Permissions and roles
         permission_map = {}
@@ -243,7 +252,7 @@ def main():
         # Users: admin password is set interactively; demo accounts are for local testing only.
         admin = User.query.filter_by(username="admin").first()
         if admin is None:
-            password = getpass("Set a NEW development admin password (min 12 chars): ")
+            password = getpass("Set a NEW admin password (min 12 chars): ")
             confirm = getpass("Confirm admin password: ")
             if password != confirm or len(password) < 12:
                 raise SystemExit("Passwords must match and contain at least 12 characters.")
@@ -257,60 +266,64 @@ def main():
         else:
             print("Admin account already exists; password left unchanged.")
 
-        def ensure_demo_user(username, email, first, last, emp, dept, role, password):
-            user = User.query.filter_by(username=username).first()
-            if user is None:
-                user = User(username=username, email=email, first_name=first, last_name=last,
-                            employee_number=emp, department_id=dept.id, is_active=True)
-                user.set_password(password)
-                user.roles.append(role_map[role])
-                db.session.add(user)
-                db.session.flush()
-            return user
+        if not args.production:
+            def ensure_demo_user(username, email, first, last, emp, dept, role, password):
+                user = User.query.filter_by(username=username).first()
+                if user is None:
+                    user = User(username=username, email=email, first_name=first, last_name=last,
+                                employee_number=emp, department_id=dept.id, is_active=True)
+                    user.set_password(password)
+                    user.roles.append(role_map[role])
+                    db.session.add(user)
+                    db.session.flush()
+                return user
 
-        helpdesk = ensure_demo_user("demo_helpdesk", "demo_helpdesk@example.local",
-                                    "Demo", "Helpdesk", "DHD001", departments["IT"],
-                                    "helpdesk_agent", "DemoHelpdesk@123")
-        support = ensure_demo_user("demo_support", "demo_support@example.local",
-                                   "Demo", "Support", "DSP001", departments["IT"],
-                                   "support_agent", "DemoSupport@123")
-        reporter = ensure_demo_user("demo_user", "demo_user@example.local",
-                                    "Demo", "Reporter", "DUS001", departments["PAT"],
-                                    "user", "DemoUser@123")
+            helpdesk = ensure_demo_user("demo_helpdesk", "demo_helpdesk@example.local",
+                                        "Demo", "Helpdesk", "DHD001", departments["IT"],
+                                        "helpdesk_agent", "DemoHelpdesk@123")
+            support = ensure_demo_user("demo_support", "demo_support@example.local",
+                                       "Demo", "Support", "DSP001", departments["IT"],
+                                       "support_agent", "DemoSupport@123")
+            reporter = ensure_demo_user("demo_user", "demo_user@example.local",
+                                        "Demo", "Reporter", "DUS001", departments["PAT"],
+                                        "user", "DemoUser@123")
 
-        # Three sample complaints; unique complaint numbers make reruns safe.
-        samples = [
-            ("HD-DEMO-0001", "HIS login is slow", "Users report slow login to the training HIS.",
-             "SOFTWARE", "HIGH", "in_progress", "HIS", "portal", reporter, helpdesk),
-            ("HD-DEMO-0002", "Ward printer is offline", "The ward printer is not responding.",
-             "PRINTING", "MEDIUM", "new", "HIS", "phone", reporter, None),
-            ("HD-DEMO-0003", "Wi-Fi drops intermittently", "Connectivity drops in the outpatient area.",
-             "NETWORK", "LOW", "assigned", "NETWORK-SVC", "walk_in", reporter, support),
-        ]
-        for number, title, description, cat, pri, status, sw, source, reporter_user, assignee in samples:
-            if not Complaint.query.filter_by(complaint_number=number).first():
-                complaint = Complaint(
-                    complaint_number=number, title=title, description=description,
-                    category_id=categories[cat].id, priority_id=priorities[pri].id,
-                    status_id=statuses[status].id, department_id=departments["IT"].id,
-                    software_id=software[sw].id,
-                    reported_by_user_id=reporter_user.id,
-                    created_by_user_id=admin.id,
-                    assigned_to_user_id=assignee.id if assignee else None,
-                    source_type=source, severity=priorities[pri].name,
-                    affected_location="Demo Ward / Outpatient",
-                )
-                db.session.add(complaint)
+            # Three sample complaints; unique complaint numbers make reruns safe.
+            samples = [
+                ("HD-DEMO-0001", "HIS login is slow", "Users report slow login to the training HIS.",
+                 "SOFTWARE", "HIGH", "in_progress", "HIS", "portal", reporter, helpdesk),
+                ("HD-DEMO-0002", "Ward printer is offline", "The ward printer is not responding.",
+                 "PRINTING", "MEDIUM", "new", "HIS", "phone", reporter, None),
+                ("HD-DEMO-0003", "Wi-Fi drops intermittently", "Connectivity drops in the outpatient area.",
+                 "NETWORK", "LOW", "assigned", "NETWORK-SVC", "walk_in", reporter, support),
+            ]
+            for number, title, description, cat, pri, status, sw, source, reporter_user, assignee in samples:
+                if not Complaint.query.filter_by(complaint_number=number).first():
+                    complaint = Complaint(
+                        complaint_number=number, title=title, description=description,
+                        category_id=categories[cat].id, priority_id=priorities[pri].id,
+                        status_id=statuses[status].id, department_id=departments["IT"].id,
+                        software_id=software[sw].id,
+                        reported_by_user_id=reporter_user.id,
+                        created_by_user_id=admin.id,
+                        assigned_to_user_id=assignee.id if assignee else None,
+                        source_type=source, severity=priorities[pri].name,
+                        affected_location="Demo Ward / Outpatient",
+                    )
+                    db.session.add(complaint)
+
 
         db.session.commit()
-        print("\nDevelopment database seeded successfully.")
-        print("Users:")
-        print("  admin          (your password, set interactively)")
-        print("  demo_helpdesk  / DemoHelpdesk@123")
-        print("  demo_support   / DemoSupport@123")
-        print("  demo_user      / DemoUser@123")
-        print(f"Sample complaints: {Complaint.query.count()}")
-        print("Change/remove demo passwords before sharing this environment.")
+        print(f"Database {actual_db} seeded successfully.")
+        if not args.production:
+            print("Development demo users:")
+            print("  demo_helpdesk / DemoHelpdesk@123")
+            print("  demo_support  / DemoSupport@123")
+            print("  demo_user     / DemoUser@123")
+            print(f"Sample complaints: {Complaint.query.count()}")
+            print("Change/remove demo passwords before sharing this environment.")
+        else:
+            print("Production seeded with reference data and the admin account only.")
 
 if __name__ == "__main__":
     main()

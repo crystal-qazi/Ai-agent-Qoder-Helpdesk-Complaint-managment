@@ -1,16 +1,32 @@
-Flask==3.0.3
+Flask==3.1.3
 Flask-SQLAlchemy==3.1.1
 Flask-Migrate==4.0.5
 Flask-Login==0.6.3
 Flask-WTF==1.2.1
-Werkzeug==3.0.3
+Werkzeug==3.1.9
 SQLAlchemy==2.0.32
-PyMySQL==1.1.0
-python-dotenv==1.0.1
+PyMySQL==1.1.1
+python-dotenv==1.2.2
 bcrypt==4.1.2
 ReportLab==4.2.2
-Chart.js==4.4.3
 WTForms==3.1.1
 email-validator==2.1.0
-Pillow==10.3.0
+Pillow==13.0.0
 waitress==3.0.2
+platformdirs==4.2.0
+
+# MIME detection.  python-magic is pulled in on every platform: the
+# app's ``detect_mime_type`` helper tries the C extension lazily and
+# falls back to a header-based sniffer when libmagic is not present,
+# so the dependency is a hard requirement on Linux (which ships the
+# library as a system package) and optional on Windows/macOS.
+#
+# Linux:
+#   ``pip install python-magic`` and ``apt-get install -y libmagic1``
+# Windows:
+#   ``pip install python-magic`` — a CPython extension is available on
+#   PyPI for common releases; if it is unavailable the app still
+#   enforces extension / size / filename validation via the fallback
+#   sniffer in ``app/services/mime_detection.py``.
+python-magic==0.4.27
+

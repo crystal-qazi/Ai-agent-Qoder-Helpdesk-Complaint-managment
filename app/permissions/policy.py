@@ -11,145 +11,120 @@ class PermissionPolicy:
         """Check if user can view a complaint."""
         if not user or not user.is_active:
             return False
-        
-        # Admin can view all
+
+        is_participant = (
+            complaint.reported_by_user_id == user.id
+            or complaint.assigned_to_user_id == user.id
+        )
+        if complaint.is_confidential and not is_participant:
+            if not user.has_permission('complaints.view_confidential'):
+                return False
+            return True
+
         if user.has_permission('complaints.view_all'):
             return True
-        
-        return user.id in (complaint.reported_by_user_id,
-                           complaint.created_by_user_id,
-                           complaint.assigned_to_user_id)
-    
+
+        # Reporters can always see complaints they submitted
+        if complaint.reported_by_user_id == user.id:
+            return True
+
+        if user.has_permission('complaints.view_my') and complaint.assigned_to_user_id == user.id:
+            return True
+
+        return False
+
     @staticmethod
-    def can_edit_complaint(user, complaint):
-        """Check if user can edit a complaint."""
+    def can_edit_complaint(user, complaint=None):
+        """Check if user can edit a complaint.
+
+        Editing is allowed when:
+
+          * the user holds ``complaints.edit`` AND (they hold
+            ``complaints.view_all`` OR the complaint is one they reported
+            or are assigned to), OR
+          * the user is the reporter of the complaint AND the complaint
+            is still in a non-terminal status (New / Assigned / In Progress /
+            Pending Info / On Hold / Reopened).
+
+        Terminal statuses (Closed, Rejected, Resolved) lock the complaint
+        against edits even for the reporter; only a privileged actor
+        (``complaints.edit`` + a visible scope) can change them.
+        """
         if not user or not user.is_active:
             return False
-        
-        # Admin can edit all
-        if user.has_permission('complaints.edit'):
+
+        if user.has_permission('complaints.view_all') and user.has_permission('complaints.edit'):
             return True
-        
-        # Creator can edit own
-        if complaint.created_by_user_id == user.id and user.has_permission('complaints.edit_own'):
+
+        if complaint is None:
+            return False
+
+        # Reporter's own complaint in a non-terminal state
+        if complaint.reported_by_user_id == user.id:
+            terminal_codes = {'closed', 'rejected', 'resolved'}
+            code = getattr(complaint.status, 'code', None) if complaint.status else None
+            if code not in terminal_codes:
+                return True
+
+        # Assignee + edit permission on own assignments
+        if (complaint.assigned_to_user_id == user.id
+                and user.has_permission('complaints.edit')
+                and user.has_permission('complaints.view_my')):
             return True
-        
-        # Assignee can edit assigned
-        if complaint.assigned_to_user_id == user.id and user.has_permission('complaints.edit_assigned'):
-            return True
-        
+
         return False
-    
+
     @staticmethod
     def can_assign_complaint(user, complaint=None):
         """Check if user can assign complaints."""
         if not user or not user.is_active:
             return False
         return user.has_permission('complaints.assign')
-    
+
     @staticmethod
-    def can_reassign_complaint(user, complaint):
-        """Check if user can reassign a complaint."""
+    def can_transfer_complaint(user, complaint):
+        """Check if user can transfer an assigned complaint."""
         if not user or not user.is_active:
             return False
-        
-        # Admin can reassign all
-        if user.has_permission('complaints.reassign'):
+        if user.has_permission('complaints.transfer'):
             return True
-        
-        # Current assignee can reassign with permission
-        if complaint.assigned_to_user_id == user.id and user.has_permission('complaints.reassign_own'):
+        if complaint.assigned_to_user_id == user.id:
             return True
-        
         return False
-    
+
+    # Restricted statuses that require status_unlock permission
+    _RESTRICTED_STATUS_CODES = frozenset(['new', 'closed', 'reopened'])
+
     @staticmethod
     def can_change_status(user, complaint, new_status):
-        """Check if user can change complaint status."""
+        """Check if user can change complaint status, enforcing status restrictions."""
         if not user or not user.is_active:
             return False
-        
-        # Terminal-type statuses need their own right, so e.g. call intake users cannot resolve/close
-        if new_status.code == 'rejected':
-            return PermissionPolicy.can_reject_complaint(user, complaint)
-        if new_status.category == 'resolved':
-            return PermissionPolicy.can_resolve_complaint(user, complaint)
-        if new_status.category == 'closed':
-            return PermissionPolicy.can_close_complaint(user, complaint)
-        if new_status.code == 'reopened':
-            return PermissionPolicy.can_reopen_complaint(user, complaint)
-        
-        if user.has_permission('complaints.change_status'):
+
+        if new_status.code in PermissionPolicy._RESTRICTED_STATUS_CODES:
+            if not user.has_permission('complaints.status_unlock'):
+                return False
+
+        if user.has_permission('complaints.change_status_all'):
             return True
-        return (complaint.assigned_to_user_id == user.id
-                and user.has_permission('complaints.change_status_assigned'))
-    
-    @staticmethod
-    def can_resolve_complaint(user, complaint):
-        """Check if user can resolve a complaint."""
-        if not user or not user.is_active:
-            return False
-        
-        # Admin can resolve all
-        if user.has_permission('complaints.resolve'):
+
+        if (user.has_permission('complaints.change_status_own')
+                and complaint.assigned_to_user_id == user.id):
             return True
-        
-        # Assignee can resolve
-        if complaint.assigned_to_user_id == user.id and user.has_permission('complaints.resolve_assigned'):
-            return True
-        
-        # Engineer can resolve
-        if user.has_role('engineer') and user.has_permission('complaints.resolve'):
-            return True
-        
+
         return False
-    
-    @staticmethod
-    def can_close_complaint(user, complaint):
-        """Check if user can close a complaint."""
-        if not user or not user.is_active:
-            return False
-        
-        # Admin can close all
-        if user.has_permission('complaints.close'):
-            return True
-        
-        # Assignee with permission can close
-        if complaint.assigned_to_user_id == user.id and user.has_permission('complaints.close_assigned'):
-            return True
-        
-        # Agent with permission can close
-        if user.has_permission('complaints.close'):
-            return True
-        
-        return False
-    
+
     @staticmethod
     def can_reopen_complaint(user, complaint):
-        """Check if user can reopen a complaint."""
+        """Reopen is handled through the unified change_status path with status_unlock.
+
+        This method is kept for backwards compatibility but redirects to the new
+        permission model.
+        """
         if not user or not user.is_active:
             return False
-        
-        # Admin can reopen
-        if user.has_permission('complaints.reopen'):
-            return True
-        
-        # Original reporter can reopen with permission
-        if complaint.reported_by_user_id == user.id and user.has_permission('complaints.reopen_own'):
-            return True
-        
-        # Assignee can reopen with permission
-        if complaint.assigned_to_user_id == user.id and user.has_permission('complaints.reopen_assigned'):
-            return True
-        
-        return False
-    
-    @staticmethod
-    def can_reject_complaint(user, complaint):
-        """Check if user can reject a complaint."""
-        if not user or not user.is_active:
-            return False
-        return user.has_permission('complaints.reject')
+        return (user.has_permission('complaints.status_unlock')
+                and user.has_permission('complaints.change_status_all'))
     
     @staticmethod
     def can_add_internal_comment(user, complaint):
@@ -221,27 +196,55 @@ class PermissionPolicy:
     
     @staticmethod
     def can_download_attachment(user, attachment):
-        """Check if user can download attachment."""
+        """Check if user can download attachment.
+
+        Confidential attachments (``is_confidential=True``) are restricted
+        to the uploader, the reporter, the assignee, and any user holding
+        ``attachments.download_all``.  Internal-view permission alone is
+        not sufficient for confidential files: the caller must also pass
+        the complaint visibility check (``can_view_complaint``) for the
+        same complaint the attachment belongs to.
+
+        The uploader always retains download access to their own files,
+        even for confidential attachments.
+        """
         if not user or not user.is_active:
             return False
-        
-        # Admin can download all
-        if user.has_permission('attachments.download_all'):
-            return True
-        
-        # Uploader can download
+
+        # Uploader can always download their own files
         if attachment.user_id == user.id:
             return True
-        
-        # Complaint participants can download
+
         complaint = attachment.complaint
+
+        # Attachment-wide permissions never bypass complaint visibility.
+        if not PermissionPolicy.can_view_complaint(user, complaint):
+            return False
+
+        # Admin can download all visible complaints
+        if user.has_permission('attachments.download_all'):
+            return True
+
+        # Complaint participants can download
         if complaint.reported_by_user_id == user.id:
             return True
         if complaint.assigned_to_user_id == user.id:
             return True
+
+        # Confidential attachments: internal-comment viewers must *additionally*
+        # be able to view the specific complaint before download is granted.
+        if attachment.is_confidential:
+            if user.has_permission('comments.view_internal'):
+                if PermissionPolicy.can_view_complaint(user, complaint):
+                    return True
+            return False
+
+        # Non-confidential: internal comment viewers may download when they
+        # can view the complaint.
         if user.has_permission('comments.view_internal'):
-            return True
-        
+            if PermissionPolicy.can_view_complaint(user, complaint):
+                return True
+
         return False
     
     @staticmethod
@@ -382,30 +385,47 @@ class PermissionPolicy:
     
     @staticmethod
     def get_accessible_complaints_query(user):
-        """Get base query for complaints accessible to user."""
+        """Get base query for complaints accessible to user.
+
+        Reporters can always see complaints they submitted, regardless of
+        their other complaint permissions.  The complaints.view_my permission
+        additionally exposes complaints the user is assigned to.
+        """
         from app.extensions import db
         from app.models import Complaint
-        
+
         if user.has_permission('complaints.view_all'):
             return Complaint.query
-        
-        return Complaint.query.filter(
-            db.or_(
-                Complaint.reported_by_user_id == user.id,
-                Complaint.created_by_user_id == user.id,
-                Complaint.assigned_to_user_id == user.id,
-            )
-        )
+
+        conditions = [Complaint.reported_by_user_id == user.id]
+
+        if user.has_permission('complaints.view_my'):
+            conditions.append(Complaint.assigned_to_user_id == user.id)
+
+        return Complaint.query.filter(db.or_(*conditions))
     
     @staticmethod
     def get_assignable_users(complaint, user):
-        """Get list of users that can be assigned to a complaint."""
-        from app.models import User, Role
-        
-        # Users with engineer or agent role who are active
-        assignable_roles = ['engineer', 'agent', 'admin']
-        return User.query.join(User.roles).filter(
-            Role.name.in_(assignable_roles),
-            User.is_active == True,
-            User.id != complaint.assigned_to_user_id  # Exclude current assignee
-        ).distinct().all()
+        """Get list of users that can be assigned to a complaint.
+
+        Returns all active users who hold at least one role that carries
+        the ``complaints.assign`` permission, so the dropdown reflects the
+        actual RBAC state rather than a hardcoded role-name list.
+        """
+        from app.models import User, Role, Permission
+        from app.extensions import db
+
+        q = (
+            User.query
+            .join(Role, User.roles)
+            .join(Permission, Role.permissions)
+            .filter(
+                Permission.name == 'complaints.assign',
+                Permission.is_active == True,
+                Role.is_active == True,
+                User.is_active == True,
+                User.id != complaint.assigned_to_user_id,
+            )
+            .distinct()
+        )
+        return q.all()

@@ -3,10 +3,12 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request,
 from flask_login import login_required, current_user
 from werkzeug.security import generate_password_hash
 from app.extensions import db
-from app.models import User, Role, Department, UserProfile
+from app.models import User, Role, Department, UserProfile, Permission
 from app.validators.user import validate_user_data, validate_password_strength
 from app.permissions.decorators import can_manage_users, can_manage_roles
 from app.services.audit import AuditService
+from app.services.admin_protection import AdminProtectionService, ProtectionCheck
+from app.error_handling import log_unexpected_error, user_error_message
 
 
 users_bp = Blueprint('users', __name__, url_prefix='/users')
@@ -61,15 +63,30 @@ def create_user():
         data['is_active'] = 'is_active' in data
         data['must_change_password'] = 'must_change_password' in data
         
-        # Convert role_ids
-        role_ids = request.form.getlist('role_ids')
-        data['role_ids'] = [int(r) for r in role_ids if r.isdigit()]
+        # Convert role_ids. We keep the raw list for validation; malformed
+        # values are rejected by AdminProtectionService.can_assign_roles,
+        # which also blocks privileged role escalation.
+        raw_role_ids = request.form.getlist('role_ids')
         
         # Convert department_id
         if data.get('department_id'):
             data['department_id'] = int(data['department_id'])
         
+        # Centralized role-assignment validation (malformed / unknown /
+        # inactive / privileged-escalation). Runs before we touch the
+        # database, and it is what actually rejects a bad role submission.
+        assignment_check = AdminProtectionService.can_assign_roles(
+            current_user, raw_role_ids, target_user_id=None,
+        )
+
         errors = validate_user_data(data)
+        # The role-assignment result is authoritative; it supersedes the
+        # generic role error that validate_user_data may have produced.
+        if not assignment_check.ok:
+            errors['role_ids'] = assignment_check.reason
+        else:
+            data['role_ids'] = [int(r) for r in raw_role_ids if r.isdigit()]
+            errors.pop('role_ids', None)
         
         if not errors:
             try:
@@ -90,7 +107,6 @@ def create_user():
                 if data.get('password'):
                     user.set_password(data['password'])
                 else:
-                    # Generate temporary password
                     import secrets
                     temp_password = secrets.token_urlsafe(12)
                     user.set_password(temp_password)
@@ -99,7 +115,8 @@ def create_user():
                 db.session.add(user)
                 db.session.flush()
                 
-                # Assign roles
+                # Assign roles (only active, validated IDs — the assignment
+                # check above already rejected anything else)
                 if data['role_ids']:
                     roles = Role.query.filter(Role.id.in_(data['role_ids'])).all()
                     user.roles = roles
@@ -122,13 +139,15 @@ def create_user():
                 return redirect(url_for('users.view_user', user_id=user.id))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating user: {str(e)}', 'danger')
+                log_unexpected_error('create user', e,
+                                     username=data.get('username'))
+                flash(user_error_message('create the user'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
     
     # Get form data
-    roles = Role.query.filter_by(is_active=True).order_by(Role.name).all()
+    roles = Role.query.filter_by(is_active=True).order_by(Role.display_name).all()
     departments = Department.query.filter_by(is_active=True).order_by(Department.name).all()
     
     return render_template('users/create.html', roles=roles, departments=departments)
@@ -169,17 +188,48 @@ def edit_user(user_id):
         data['is_active'] = 'is_active' in data
         data['must_change_password'] = 'must_change_password' in data
         
-        # Convert role_ids
-        role_ids = request.form.getlist('role_ids')
-        data['role_ids'] = [int(r) for r in role_ids if r.isdigit()]
+        # Convert role_ids. Raw values validated by AdminProtectionService
+        # before any database writes.
+        raw_role_ids = request.form.getlist('role_ids')
         
         # Convert department_id
         if data.get('department_id'):
             data['department_id'] = int(data['department_id'])
         
         errors = validate_user_data(data, user_id)
+
+        # Centralized admin protection
+        # Only run the last-admin guard when this POST actually changes an
+        # active account to inactive. Ordinary profile edits must not be blocked.
+        deactivation_check = (
+            AdminProtectionService.can_deactivate_user(user, current_user)
+            if user.is_active and not data['is_active']
+            else ProtectionCheck.allow()
+        )
+
+        role_assignment_check = AdminProtectionService.can_assign_roles(
+            current_user, raw_role_ids, target_user_id=user.id,
+        )
+
+        self_removal_check = AdminProtectionService.can_remove_admin_role_from(
+            user, raw_role_ids, current_user,
+        )
+
+        # Fold results into the error dict; role checks are authoritative and
+        # supersede the generic role error from validate_user_data.
+        if not deactivation_check.ok:
+            errors['is_active'] = deactivation_check.reason
+        if not self_removal_check.ok:
+            errors['role_ids'] = self_removal_check.reason
+        elif not role_assignment_check.ok:
+            errors['role_ids'] = role_assignment_check.reason
+        else:
+            data['role_ids'] = [int(r) for r in raw_role_ids if r.isdigit()]
+            errors.pop('role_ids', None)
         
         if not errors:
+            normalized_role_ids = [int(r) for r in raw_role_ids if r.isdigit()]
+            data['role_ids'] = normalized_role_ids
             try:
                 old_data = {
                     'username': user.username,
@@ -204,11 +254,40 @@ def edit_user(user_id):
                 user.employee_number = data.get('employee_number', '').strip() or None
                 user.department_id = data.get('department_id')
                 user.is_active = data.get('is_active', True)
-                user.must_change_password = data.get('must_change_password', False)
                 
-                # Update roles
-                if data['role_ids']:
-                    roles = Role.query.filter(Role.id.in_(data['role_ids'])).all()
+                # Preserve the existing must_change_password flag unless
+                # an explicitly authorized workflow is requested.  A
+                # form submission that does not include the checkbox
+                # (e.g. a regular profile edit that never renders the
+                # checkbox) must not silently clear the flag.  The flag
+                # may only be *cleared* when the actor holds the admin
+                # role — clearing is a system-management operation
+                # that ordinary user editors must not be able to
+                # bypass.  Setting the flag to True remains a
+                # legitimate user-management action and is open to any
+                # user with ``users.manage``.
+                if 'must_change_password' in data:
+                    if data.get('must_change_password'):
+                        user.must_change_password = True
+                    else:
+                        # Clearing the flag is a system-management
+                        # action: only an *active* administrator may do
+                        # it.  ``has_role`` filters active roles, but
+                        # the actor themselves must also be active — a
+                        # deactivated admin's roles no longer confer
+                        # authority (mirrors the ``load_user``
+                        # fail-closed behaviour), so the gate must
+                        # check ``current_user.is_active`` as well.
+                        actor_is_admin = current_user.is_active and \
+                            current_user.has_role(
+                                AdminProtectionService.ADMIN_ROLE_NAME)
+                        if actor_is_admin:
+                            user.must_change_password = False
+                        # else: keep the flag; a non-admin may not lift it.
+                
+                # Update roles (validated set only)
+                if normalized_role_ids:
+                    roles = Role.query.filter(Role.id.in_(normalized_role_ids)).all()
                     user.roles = roles
                 else:
                     user.roles = []
@@ -240,13 +319,17 @@ def edit_user(user_id):
                 return redirect(url_for('users.view_user', user_id=user.id))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating user: {str(e)}', 'danger')
+                log_unexpected_error('update user', e,
+                                     username=data.get('username'),
+                                     user_id=user.id)
+                flash(user_error_message('update the user'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
     
-    # Get form data
-    roles = Role.query.filter_by(is_active=True).order_by(Role.name).all()
+    # Get form data — active roles only; user's currently-assigned inactive
+    # roles are surfaced as a warning in the template.
+    roles = Role.query.filter_by(is_active=True).order_by(Role.display_name).all()
     departments = Department.query.filter_by(is_active=True).order_by(Department.name).all()
     user_roles = [r.id for r in user.roles]
     
@@ -266,6 +349,12 @@ def delete_user(user_id):
     
     if user.id == current_user.id:
         flash('You cannot delete your own account.', 'danger')
+        return redirect(url_for('users.view_user', user_id=user.id))
+    
+    # Centralized last-admin protection
+    check = AdminProtectionService.can_deactivate_user(user, current_user)
+    if not check.ok:
+        flash(check.reason, 'danger')
         return redirect(url_for('users.view_user', user_id=user.id))
     
     # Soft delete
@@ -365,6 +454,17 @@ def create_role():
         if not display_name:
             errors['display_name'] = 'Display name is required.'
         
+        # Server-side role-creation authorization.  Rejects malformed,
+        # unknown or inactive permission IDs and blocks any attempt to
+        # mint a new role that carries sensitive system-management
+        # permissions unless the actor is an administrator.  The audit
+        # trail is written by the protection service.
+        role_creation_check = AdminProtectionService.can_create_role(
+            current_user, permission_ids, role_name=name,
+        )
+        if not role_creation_check.ok:
+            errors['permission_ids'] = role_creation_check.reason
+        
         if not errors:
             try:
                 role = Role(
@@ -375,9 +475,16 @@ def create_role():
                 db.session.add(role)
                 db.session.flush()
                 
-                # Assign permissions
+                # Assign permissions.  ``can_create_role`` has already
+                # validated every submitted ID (exists, is active, and is
+                # delegable by this actor).  Re-query so the relationship
+                # binds the *validated active* rows, not raw form values.
                 if permission_ids:
-                    permissions = Permission.query.filter(Permission.id.in_(permission_ids)).all()
+                    valid_ids = [int(p) for p in permission_ids if str(p).strip().isdigit()]
+                    permissions = Permission.query.filter(
+                        Permission.id.in_(valid_ids),
+                        Permission.is_active == True,
+                    ).all()
                     role.permissions = permissions
                 
                 db.session.commit()
@@ -396,7 +503,8 @@ def create_role():
                 return redirect(url_for('users.list_roles'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error creating role: {str(e)}', 'danger')
+                log_unexpected_error('create role', e, role_name=name)
+                flash(user_error_message('create the role'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -423,18 +531,31 @@ def edit_role(role_id):
         display_name = request.form.get('display_name', '').strip()
         description = request.form.get('description', '').strip()
         permission_ids = request.form.getlist('permission_ids')
-        
+
+        # Guard the admin role before touching anything. A non-admin
+        # actor must not be able to edit the admin role's permission
+        # set in a way that changes effective admin privileges.
+        admin_guard = AdminProtectionService.can_edit_admin_role(
+            current_user,
+            permission_ids,
+            original_permission_ids=[p.id for p in role.permissions],
+            role_id=role.id,
+        )
+        if not admin_guard.ok:
+            flash(admin_guard.reason, 'danger')
+            return redirect(url_for('users.list_roles'))
+
         errors = {}
         if not display_name:
             errors['display_name'] = 'Display name is required.'
-        
+
         if not errors:
             try:
                 old_permissions = list(role.permissions)
-                
+
                 role.display_name = display_name
                 role.description = description or None
-                
+
                 if permission_ids:
                     permissions = Permission.query.filter(Permission.id.in_(permission_ids)).all()
                     role.permissions = permissions
@@ -452,7 +573,8 @@ def edit_role(role_id):
                 return redirect(url_for('users.list_roles'))
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error updating role: {str(e)}', 'danger')
+                log_unexpected_error('update role', e, role_id=role_id)
+                flash(user_error_message('update the role'), 'danger')
         else:
             for field, error in errors.items():
                 flash(error, 'danger')
@@ -497,10 +619,48 @@ def delete_role(role_id):
         entity_type='role',
         entity_id=role_id,
         entity_repr=role.name,
-        category='config',
+        category='security',
+        severity='warning',
     )
     
     flash('Role deleted successfully.', 'success')
+    return redirect(url_for('users.list_roles'))
+
+
+@users_bp.route('/roles/<int:role_id>/toggle', methods=['POST'])
+@login_required
+@can_manage_roles
+def toggle_role(role_id):
+    """Activate or deactivate a role."""
+    role = Role.query.get_or_404(role_id)
+    new_state = not role.is_active
+
+    # When deactivating the admin role, ensure active admins still hold it
+    # through at least one OTHER active role or there must be a safe
+    # replacement process. The protection service enforces this.
+    if not new_state and role.name == 'admin':
+        check = AdminProtectionService.can_deactivate_admin_role(current_user)
+        if not check.ok:
+            flash(check.reason, 'danger')
+            return redirect(url_for('users.list_roles'))
+
+    role.is_active = new_state
+    role.updated_by_user_id = current_user.id
+    db.session.commit()
+
+    AuditService.log_action(
+        user_id=current_user.id,
+        action='toggle_role',
+        entity_type='role',
+        entity_id=role.id,
+        entity_repr=role.name,
+        new_values={'is_active': new_state},
+        category='security',
+        severity='warning',
+    )
+
+    status = 'activated' if new_state else 'deactivated'
+    flash(f'Role "{role.display_name}" {status}.', 'success')
     return redirect(url_for('users.list_roles'))
 
 
@@ -514,5 +674,4 @@ def list_permissions():
 
 
 # Import needed
-from app.models import Permission
 from app.extensions import db

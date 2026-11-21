@@ -1,9 +1,26 @@
 """Rebuild the database schema from the current models and seed defaults.
 
 Destructive by design: drops every table known to the SQLAlchemy metadata
-before recreating it. Only run against the development database.
+before recreating it.  Only run against a *test* database, never against
+the production application database.
+
+Safety contract:
+
+  * ``DB_NAME`` must match ``helpdesk_<identifier>_test`` or
+    ``TEST_DB_NAME`` must be set to such a name.  The script refuses to
+    run against any other schema, including the application database.
+  * The script prints the target DB name before doing anything destructive
+    so the operator can confirm the target is the one they intended.
+
+Usage::
+
+    set TARGET_TEST_DB=1    (Windows)   or   TARGET_TEST_DB=1 (POSIX)
+    python scripts/reset_and_seed.py
+
+Without the flag, the script refuses to start.
 """
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,45 +29,89 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from sqlalchemy import text
 
-from app import create_app
-from app.extensions import db
-import app.models  # noqa: F401  (registers all mappers / tables)
-from app.models import (
-    User, Role, Permission, UserProfile, LoginAttempt,
-    Department, SoftwareCatalog, Category, Priority, Status,
-    Complaint, ComplaintAssignment, ComplaintStatusHistory,
-    ComplaintHistory, Comment, Attachment,
-    SLAPolicy, SLAHistory, Holiday, WorkingSchedule,
-    Notification, AuditLog, SystemSetting,
-)
+def _target_database():
+    """Return the configured test database name and assert it is test-only."""
+    test_db_name = os.environ.get('TEST_DB_NAME', '')
+    if not test_db_name:
+        # Fall back to DB_NAME, but we still require the _test suffix.
+        test_db_name = os.environ.get('DB_NAME', '')
+    if not test_db_name:
+        raise SystemExit(
+            'reset_and_seed.py requires either TEST_DB_NAME or DB_NAME to '
+            'be set.  The name must match the pattern '
+            'helpdesk_<identifier>_test.'
+        )
+    if not re.fullmatch(r'helpdesk_[a-z0-9_]*_test', test_db_name):
+        raise SystemExit(
+            f'reset_and_seed.py refuses to target database {test_db_name!r}. '
+            'The name must match helpdesk_<identifier>_test. '
+            'Set TEST_DB_NAME=helpdesk_<identifier>_test before running.'
+        )
+    return test_db_name
+
+
+def _build_database_url(target):
+    """Build the validated test-database URI from the DB_* settings.
+
+    The application builds its own URI from DB_HOST/DB_PORT/DB_USER/
+    DB_PASSWORD; this helper produces the same shape for the isolated
+    test schema so it can be handed to the app factory explicitly.
+    """
+    from sqlalchemy.engine import URL
+    return URL.create(
+        'mysql+pymysql',
+        username=os.environ.get('DB_USER', '').strip(),
+        password=os.environ.get('DB_PASSWORD', ''),
+        host=os.environ.get('DB_HOST', 'localhost').strip().lower(),
+        port=int(os.environ.get('DB_PORT', '3306')),
+        database=target,
+    )
+
+
+def main():
+    """Entry point: validate the test-only target, then run the rebuild."""
+    if os.environ.get('TARGET_TEST_DB') != '1':
+        raise SystemExit(
+            'refusing to run: set TARGET_TEST_DB=1 to confirm this is a '
+            'test-only run against a helpdesk_<identifier>_test database.'
+        )
+    if os.environ.get('FLASK_ENV', '').lower() == 'production':
+        raise SystemExit('refusing to run reset_and_seed.py in production.')
+    target = _target_database()
+    host = os.environ.get('DB_HOST', 'localhost').strip().lower()
+    if host not in {'localhost', '127.0.0.1', '::1'}:
+        raise SystemExit('refusing destructive reset on a non-local database host.')
+    db_user = os.environ.get('DB_USER', '').strip()
+    db_password = os.environ.get('DB_PASSWORD', '')
+    if not db_user or db_user.lower() == 'root' or not db_password:
+        raise SystemExit('Set a non-root DB_USER and non-empty DB_PASSWORD for the disposable test database.')
+    database_url = _build_database_url(target)
+    # ``TEST_DB_NAME`` is retained so _do_rebuild can verify the connected
+    # schema identity before dropping anything.
+    os.environ['TEST_DB_NAME'] = target
+    # NOTE: the application no longer reads ``DATABASE_URL`` (it builds the
+    # URI from DB_HOST/DB_PORT/DB_USER/DB_PASSWORD and a fixed database
+    # name per environment).  The validated test URI is therefore handed to
+    # the app factory explicitly via ``config_overrides`` instead of being
+    # smuggled through an environment variable the app ignores.
+    _do_rebuild(database_url)
 
 
 PERMISSIONS = [
     # dashboard
     ('dashboard.view', 'View Dashboard', 'dashboard', 'view'),
-    # complaints
+    # complaints — exactly 9 permissions per spec
     ('complaints.create', 'Create Complaint', 'complaints', 'create'),
     ('complaints.view_all', 'View All Complaints', 'complaints', 'view_all'),
-    ('complaints.view_assigned', 'View Assigned Complaints', 'complaints', 'view_assigned'),
-    ('complaints.edit', 'Edit Any Complaint', 'complaints', 'edit'),
-    ('complaints.edit_own', 'Edit Own Complaint', 'complaints', 'edit_own'),
-    ('complaints.edit_assigned', 'Edit Assigned Complaint', 'complaints', 'edit_assigned'),
-    ('complaints.update', 'Update Complaint', 'complaints', 'update'),
-    ('complaints.assign', 'Assign Complaints', 'complaints', 'assign'),
-    ('complaints.reassign', 'Reassign Any Complaint', 'complaints', 'reassign'),
-    ('complaints.reassign_own', 'Reassign Own Complaint', 'complaints', 'reassign_own'),
-    ('complaints.change_status', 'Change Any Status', 'complaints', 'change_status'),
-    ('complaints.change_status_assigned', 'Change Assigned Status', 'complaints', 'change_status_assigned'),
-    ('complaints.resolve', 'Resolve Any Complaint', 'complaints', 'resolve'),
-    ('complaints.resolve_assigned', 'Resolve Assigned Complaint', 'complaints', 'resolve_assigned'),
-    ('complaints.close', 'Close Any Complaint', 'complaints', 'close'),
-    ('complaints.close_assigned', 'Close Assigned Complaint', 'complaints', 'close_assigned'),
-    ('complaints.reopen', 'Reopen Any Complaint', 'complaints', 'reopen'),
-    ('complaints.reopen_own', 'Reopen Own Complaint', 'complaints', 'reopen_own'),
-    ('complaints.reopen_assigned', 'Reopen Assigned Complaint', 'complaints', 'reopen_assigned'),
-    ('complaints.reject', 'Reject Complaints', 'complaints', 'reject'),
+    ('complaints.view_confidential', 'View Confidential Complaints', 'complaints', 'view_confidential'),
+    ('complaints.view_my', 'View My Complaints', 'complaints', 'view_my'),
+    ('complaints.edit', 'Edit Complaint', 'complaints', 'edit'),
+    ('complaints.assign', 'Assign Complaint', 'complaints', 'assign'),
+    ('complaints.transfer', 'Transfer Complaint', 'complaints', 'transfer'),
+    ('complaints.change_status_own', 'Change Status of Own Complaints', 'complaints', 'change_status_own'),
+    ('complaints.change_status_all', 'Change Status of Any Complaint', 'complaints', 'change_status_all'),
+    ('complaints.status_unlock', 'Access Restricted Statuses', 'complaints', 'status_unlock'),
     ('complaints.delete', 'Delete Complaints', 'complaints', 'delete'),
     # comments
     ('comments.add_internal', 'Add Internal Comment', 'comments', 'add_internal'),
@@ -84,20 +145,28 @@ PERMISSIONS = [
 
 AGENT_PERMISSIONS = [
     'dashboard.view',
-    'complaints.create', 'complaints.view_all', 'complaints.view_assigned',
-    'complaints.edit', 'complaints.edit_assigned', 'complaints.update',
-    'complaints.assign', 'complaints.reassign', 'complaints.change_status',
-    'complaints.change_status_assigned', 'complaints.resolve',
-    'complaints.resolve_assigned', 'complaints.close', 'complaints.close_assigned',
-    'complaints.reopen', 'complaints.reopen_assigned', 'complaints.reject',
+    'complaints.create', 'complaints.view_all', 'complaints.view_my',
+    'complaints.edit', 'complaints.assign', 'complaints.transfer',
+    'complaints.change_status_own', 'complaints.change_status_all',
+    'complaints.status_unlock',
     'comments.add_internal', 'comments.add_reporter_visible', 'comments.view_internal',
     'attachments.upload', 'attachments.download_all', 'attachments.delete',
     'reports.view', 'reports.export', 'users.view',
 ]
 
+SUPPORT_AGENT_PERMISSIONS = [
+    'dashboard.view',
+    'complaints.create', 'complaints.view_my',
+    'complaints.edit', 'complaints.transfer',
+    'complaints.change_status_own',
+    'comments.add_internal', 'comments.add_reporter_visible', 'comments.view_internal',
+    'attachments.upload', 'attachments.download_all',
+    'reports.view', 'reports.export', 'notifications.view',
+]
+
 USER_PERMISSIONS = [
     'dashboard.view',
-    'complaints.create', 'complaints.edit_own', 'complaints.reopen_own',
+    'complaints.create',
     'comments.add_reporter_visible',
     'attachments.upload', 'attachments.delete_own',
 ]
@@ -169,6 +238,16 @@ SETTINGS = [
 
 
 def table_counts():
+    """Print per-table row counts for the operator to eyeball the result.
+
+    The database helpers are imported here (rather than at module import
+    time) because the script's safety guard must be able to refuse to run
+    before any SQLAlchemy app object is constructed.  Run inside an active
+    application context (see ``_do_rebuild``).
+    """
+    from sqlalchemy import text
+    from app.extensions import db
+
     tables = [
         'users', 'roles', 'permissions', 'departments', 'categories',
         'statuses', 'priorities', 'sla_policies', 'working_schedules',
@@ -182,10 +261,43 @@ def table_counts():
             print(f'  {name}: ERROR {exc}')
 
 
-def main():
-    app = create_app(os.environ.get('FLASK_ENV', 'development'))
+def _do_rebuild(database_url):
+    """Perform the destructive schema reset + seed against the target DB.
+
+    ``database_url`` is the already-validated test-database URI built from
+    DB_HOST/DB_PORT/DB_USER/DB_PASSWORD in :func:`main`.  It is passed to
+    the app factory as an explicit override so the reset can never reach
+    the fixed development or production schema.
+    """
+    from sqlalchemy import text
+
+    from app import create_app
+    from app.extensions import db
+    import app.models  # noqa: F401  (registers all mappers / tables)
+    from app.models import (
+        User, Role, Permission, UserProfile, LoginAttempt,
+        Department, SoftwareCatalog, Category, Priority, Status,
+        Complaint, ComplaintAssignment, ComplaintStatusHistory,
+        ComplaintHistory, Comment, Attachment,
+        SLAPolicy, SLAHistory, Holiday, WorkingSchedule,
+        Notification, AuditLog, SystemSetting,
+    )
+
+    app = create_app('development', {
+        'SQLALCHEMY_DATABASE_URI': database_url,
+    })
     with app.app_context():
-        print(f'Database: {app.config["SQLALCHEMY_DATABASE_URI"]}')
+        # Fail-closed: confirm we are talking to the target test database.
+        target = os.environ.get('TEST_DB_NAME')
+        with db.engine.connect() as connection:
+            actual_database, actual_host = connection.execute(
+                text('SELECT DATABASE(), @@hostname')
+            ).one()
+        if not target or actual_database != target:
+            raise SystemExit('Connected database identity does not match TEST_DB_NAME; aborting.')
+        if os.environ.get('DB_HOST', 'localhost').strip().lower() not in {'localhost', '127.0.0.1', '::1'}:
+            raise SystemExit('Destructive reset is restricted to a local database host.')
+        print(f'Database: {actual_database} on {actual_host} (credentials hidden)')
         print('Dropping existing tables...')
         db.session.remove()
         existing = db.inspect(db.engine).get_table_names()
@@ -213,17 +325,21 @@ def main():
                           description='Full system access', is_system=True)
         admin_role.permissions.extend(permissions.values())
 
-        agent_role = Role(name='agent', display_name='Support Agent',
-                          description='Handle and resolve complaints', is_system=True)
-        agent_role.permissions.extend(permissions[p] for p in AGENT_PERMISSIONS)
+        helpdesk_role = Role(name='helpdesk_agent', display_name='Helpdesk Agent',
+                             description='Intake and manage complaints end-to-end', is_system=True)
+        helpdesk_role.permissions.extend(permissions[p] for p in AGENT_PERMISSIONS)
+
+        support_role = Role(name='support_agent', display_name='Support Agent',
+                            description='Resolve assigned complaints', is_system=True)
+        support_role.permissions.extend(permissions[p] for p in SUPPORT_AGENT_PERMISSIONS)
 
         user_role = Role(name='user', display_name='End User',
                          description='Submit and track own complaints', is_system=True)
         user_role.permissions.extend(permissions[p] for p in USER_PERMISSIONS)
 
-        db.session.add_all([admin_role, agent_role, user_role])
+        db.session.add_all([admin_role, helpdesk_role, support_role, user_role])
         db.session.flush()
-        print('Created 3 roles')
+        print('Created 4 roles')
 
         # 3. Working schedule (needed by SLA policies)
         schedule = WorkingSchedule(
@@ -339,19 +455,32 @@ def main():
         admin.roles.append(admin_role)
         db.session.add(admin)
 
-        # 12. Demo agent and end user
-        agent = User(
-            username='agent',
-            email='agent@hospital.local',
-            first_name='Support',
+        # 12. Demo helpdesk agent, support agent and end user
+        helpdesk = User(
+            username='helpdesk',
+            email='helpdesk@hospital.local',
+            first_name='Helpdesk',
             last_name='Agent',
-            employee_number='AGT001',
+            employee_number='HD001',
             department_id=departments['IT'].id,
             is_active=True,
         )
-        agent.set_password('Agent@123')
-        agent.roles.append(agent_role)
-        db.session.add(agent)
+        helpdesk.set_password('Helpdesk@123')
+        helpdesk.roles.append(helpdesk_role)
+        db.session.add(helpdesk)
+
+        support = User(
+            username='support',
+            email='support@hospital.local',
+            first_name='Support',
+            last_name='Agent',
+            employee_number='SA001',
+            department_id=departments['IT'].id,
+            is_active=True,
+        )
+        support.set_password('Support@123')
+        support.roles.append(support_role)
+        db.session.add(support)
 
         end_user = User(
             username='user',
@@ -367,7 +496,7 @@ def main():
         db.session.add(end_user)
 
         db.session.commit()
-        print('Created users: admin / Admin@123, agent / Agent@123, user / User@123')
+        print('Created users: admin / Admin@123, helpdesk / Helpdesk@123, support / Support@123, user / User@123')
 
         print('\nFinal counts:')
         table_counts()
