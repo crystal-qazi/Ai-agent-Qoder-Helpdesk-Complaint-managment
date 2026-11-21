@@ -270,8 +270,17 @@ def edit_user(user_id):
                     if data.get('must_change_password'):
                         user.must_change_password = True
                     else:
-                        actor_is_admin = current_user.has_role(
-                            AdminProtectionService.ADMIN_ROLE_NAME)
+                        # Clearing the flag is a system-management
+                        # action: only an *active* administrator may do
+                        # it.  ``has_role`` filters active roles, but
+                        # the actor themselves must also be active — a
+                        # deactivated admin's roles no longer confer
+                        # authority (mirrors the ``load_user``
+                        # fail-closed behaviour), so the gate must
+                        # check ``current_user.is_active`` as well.
+                        actor_is_admin = current_user.is_active and \
+                            current_user.has_role(
+                                AdminProtectionService.ADMIN_ROLE_NAME)
                         if actor_is_admin:
                             user.must_change_password = False
                         # else: keep the flag; a non-admin may not lift it.
@@ -466,9 +475,16 @@ def create_role():
                 db.session.add(role)
                 db.session.flush()
                 
-                # Assign permissions
+                # Assign permissions.  ``can_create_role`` has already
+                # validated every submitted ID (exists, is active, and is
+                # delegable by this actor).  Re-query so the relationship
+                # binds the *validated active* rows, not raw form values.
                 if permission_ids:
-                    permissions = Permission.query.filter(Permission.id.in_(permission_ids)).all()
+                    valid_ids = [int(p) for p in permission_ids if str(p).strip().isdigit()]
+                    permissions = Permission.query.filter(
+                        Permission.id.in_(valid_ids),
+                        Permission.is_active == True,
+                    ).all()
                     role.permissions = permissions
                 
                 db.session.commit()

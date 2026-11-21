@@ -27,22 +27,6 @@ from sqlalchemy import select
 # data-repair script for how it is identified.
 ADMIN_ROLE_NAME = 'admin'
 
-# Sensitive permission names that must be protected when an actor creates
-# a new role.  A ``roles.manage``-only user may not mint a new role that
-# carries any of these, because doing so is a privilege escalation: the
-# actor would gain indirect access to system-management surfaces they do
-# not personally hold.  Real administrators (``has_role(ADMIN_ROLE_NAME)``)
-# are exempt — granting them a new role with these permissions is a
-# legitimate workflow (see ``reset_and_seed.py`` which pre-seeds the
-# admin role with exactly this set).
-PROTECTED_PERMISSION_NAMES = frozenset((
-    'users.manage',
-    'permissions.manage',
-    'settings.manage',
-    'config.manage',
-    'audit.view',
-))
-
 
 def _int_ids(raw: Iterable) -> list:
     return [int(x) for x in (raw or []) if str(x).strip().isdigit()]
@@ -511,39 +495,26 @@ class AdminProtectionService:
         return Permission.query.filter(Permission.id.in_(requested_permission_ids)).all()
 
     @classmethod
-    def _protected_permission_ids(cls):
-        """Return the set of IDs of sensitive permissions that an
-        admin-only user is the only actor who may grant into a new
-        role.  Used by :meth:`can_create_role` to block any non-admin
-        attempt to seed a system-management surface into a new role."""
-        protected_perms = Permission.query.filter(
-            Permission.name.in_(PROTECTED_PERMISSION_NAMES)
-        ).all()
-        return set(p.id for p in protected_perms)
-
-    @classmethod
     def can_create_role(cls, actor_user: User, requested_permission_ids,
                        role_name: str) -> ProtectionCheck:
         """Validate a new-role creation request before it is committed.
 
         The rule closes the privilege-escalation gap in which a
-        ``roles.manage``-only user could mint a role carrying permissions
+        ``roles.manage`` holder could mint a role carrying permissions
         they do not personally hold.
 
         1. Malformed IDs — any non-integer ID is rejected up front.
         2. Unknown or inactive permissions are rejected so a new role
            cannot reference a permission that does not exist or has been
            disabled.
-        3. Sensitive permissions (see ``PROTECTED_PERMISSION_NAMES``) may
-           only be granted by an actor who holds the admin role
-           (``ADMIN_ROLE_NAME``).  This prevents a ``roles.manage``-only
-           user from building an "admin-equivalent" role under a
-           different name — they must be an administrator to seed
-           system-management permissions into a new role.
+        3. Strict permission delegation: a non-admin may only grant
+           permissions they *personally hold* (active roles + active
+           permissions).  An administrator is exempt — building a role
+           with any permission is a legitimate admin workflow because
+           the seeded admin role carries the full permission set.
         4. An ``admin`` role name (case-insensitive) cannot be created by
-           a non-admin, even without sensitive permissions, because the
-           name alone would imply the admin role and the check would be
-           ambiguous with the seeded admin role.
+           a non-admin, even without any permissions, because the
+           name alone would be ambiguous with the seeded admin role.
 
         Returns a ``ProtectionCheck``; the caller must reject the form
         before writing the new Role row.
@@ -570,14 +541,18 @@ class AdminProtectionService:
                 return check
             normalized.append(int(s))
 
+        # 1b. Duplicate IDs are harmless (the route stores a de-duplicated
+        #     set) but are recorded so an operator can spot form errors.
+        unique_ids = list(dict.fromkeys(normalized))
+
         # 2. Exist + active.
-        submitted = cls._load_submitted_permissions(normalized)
-        if normalized:
+        submitted = cls._load_submitted_permissions(unique_ids)
+        if unique_ids:
             found_ids = {p.id for p in submitted}
             active_perms = [p for p in submitted if p.is_active]
             active_ids = {p.id for p in active_perms}
 
-            missing = set(normalized) - found_ids
+            missing = set(unique_ids) - found_ids
             if missing:
                 check = ProtectionCheck.reject(
                     'One or more selected permissions do not exist.',
@@ -596,7 +571,7 @@ class AdminProtectionService:
                 )
                 return check
 
-            inactive = set(normalized) - active_ids
+            inactive = set(unique_ids) - active_ids
             if inactive:
                 inactive_names = [p.name for p in submitted if p.id in inactive]
                 check = ProtectionCheck.reject(
@@ -617,17 +592,28 @@ class AdminProtectionService:
                 )
                 return check
 
-        # 3. Sensitive permission protection: only an admin may mint a
-        #    new role carrying any of PROTECTED_PERMISSION_NAMES.
+        # 3. Strict permission delegation: a role may only carry
+        #    permissions the actor *personally holds* (active roles +
+        #    active permissions).  This closes the escalation gap in
+        #    which a ``roles.manage`` holder could mint a role granting
+        #    a permission they do not have themselves.  Administrators
+        #    are exempt — granting a role the permissions an admin holds
+        #    is a legitimate system-management workflow (see the seeded
+        #    admin role, which carries the full permission set).
         actor_is_admin = actor_user.has_role(ADMIN_ROLE_NAME)
-        if not actor_is_admin and normalized:
-            protected_ids = cls._protected_permission_ids()
-            requested_protected = set(normalized) & protected_ids
-            if requested_protected:
+        if not actor_is_admin and unique_ids:
+            actor_perm_ids = {p.id for p in actor_user.get_permissions()}
+            not_held = set(unique_ids) - actor_perm_ids
+            if not_held:
+                # Resolve the names for the audit trail; fall back to the
+                # IDs when a permission no longer exists.
+                by_id = {p.id: p.name for p in submitted}
+                not_held_names = [by_id.get(pid, str(pid)) for pid in sorted(not_held)]
                 check = ProtectionCheck.reject(
-                    'Only administrators may create a role that includes sensitive '
-                    'system-management permissions.',
-                    'sensitive_permission_escalation_blocked',
+                    'Cannot grant a permission you do not personally hold. '
+                    'A role may only carry permissions already assigned to you.',
+                    'permission_not_delegable:{0}'.format(
+                        ','.join(sorted(not_held_names))),
                 )
                 cls._log_blocked(
                     user_id=actor_user.id,
@@ -635,7 +621,8 @@ class AdminProtectionService:
                     entity_type='role',
                     entity_id=None,
                     entity_repr=role_name,
-                    new_values={'requested_protected_permission_ids': sorted(requested_protected)},
+                    new_values={'not_delegable_permission_ids': sorted(not_held),
+                                'not_delegable_permission_names': not_held_names},
                     error_message=check.audit_reason,
                     severity='warning',
                     category='security',
