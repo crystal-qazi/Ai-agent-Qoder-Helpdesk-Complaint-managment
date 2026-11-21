@@ -254,7 +254,27 @@ def edit_user(user_id):
                 user.employee_number = data.get('employee_number', '').strip() or None
                 user.department_id = data.get('department_id')
                 user.is_active = data.get('is_active', True)
-                user.must_change_password = data.get('must_change_password', False)
+                
+                # Preserve the existing must_change_password flag unless
+                # an explicitly authorized workflow is requested.  A
+                # form submission that does not include the checkbox
+                # (e.g. a regular profile edit that never renders the
+                # checkbox) must not silently clear the flag.  The flag
+                # may only be *cleared* when the actor holds the admin
+                # role — clearing is a system-management operation
+                # that ordinary user editors must not be able to
+                # bypass.  Setting the flag to True remains a
+                # legitimate user-management action and is open to any
+                # user with ``users.manage``.
+                if 'must_change_password' in data:
+                    if data.get('must_change_password'):
+                        user.must_change_password = True
+                    else:
+                        actor_is_admin = current_user.has_role(
+                            AdminProtectionService.ADMIN_ROLE_NAME)
+                        if actor_is_admin:
+                            user.must_change_password = False
+                        # else: keep the flag; a non-admin may not lift it.
                 
                 # Update roles (validated set only)
                 if normalized_role_ids:
@@ -424,6 +444,17 @@ def create_role():
         
         if not display_name:
             errors['display_name'] = 'Display name is required.'
+        
+        # Server-side role-creation authorization.  Rejects malformed,
+        # unknown or inactive permission IDs and blocks any attempt to
+        # mint a new role that carries sensitive system-management
+        # permissions unless the actor is an administrator.  The audit
+        # trail is written by the protection service.
+        role_creation_check = AdminProtectionService.can_create_role(
+            current_user, permission_ids, role_name=name,
+        )
+        if not role_creation_check.ok:
+            errors['permission_ids'] = role_creation_check.reason
         
         if not errors:
             try:

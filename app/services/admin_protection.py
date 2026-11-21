@@ -27,6 +27,22 @@ from sqlalchemy import select
 # data-repair script for how it is identified.
 ADMIN_ROLE_NAME = 'admin'
 
+# Sensitive permission names that must be protected when an actor creates
+# a new role.  A ``roles.manage``-only user may not mint a new role that
+# carries any of these, because doing so is a privilege escalation: the
+# actor would gain indirect access to system-management surfaces they do
+# not personally hold.  Real administrators (``has_role(ADMIN_ROLE_NAME)``)
+# are exempt — granting them a new role with these permissions is a
+# legitimate workflow (see ``reset_and_seed.py`` which pre-seeds the
+# admin role with exactly this set).
+PROTECTED_PERMISSION_NAMES = frozenset((
+    'users.manage',
+    'permissions.manage',
+    'settings.manage',
+    'config.manage',
+    'audit.view',
+))
+
 
 def _int_ids(raw: Iterable) -> list:
     return [int(x) for x in (raw or []) if str(x).strip().isdigit()]
@@ -477,5 +493,172 @@ class AdminProtectionService:
                     category='security',
                 )
                 return check
+
+        return ProtectionCheck.allow()
+
+    @classmethod
+    def _load_submitted_permissions(cls, requested_permission_ids):
+        """Load the submitted permission IDs from the database.
+
+        Private helper that returns a list of ``Permission`` rows (only
+        those whose ID matches the submitted list).  The caller is
+        responsible for the rest of the validation (missing / inactive
+        / protected).  Splitting the DB access out into a helper lets
+        unit tests patch the lookup without touching an app context.
+        """
+        if not requested_permission_ids:
+            return []
+        return Permission.query.filter(Permission.id.in_(requested_permission_ids)).all()
+
+    @classmethod
+    def _protected_permission_ids(cls):
+        """Return the set of IDs of sensitive permissions that an
+        admin-only user is the only actor who may grant into a new
+        role.  Used by :meth:`can_create_role` to block any non-admin
+        attempt to seed a system-management surface into a new role."""
+        protected_perms = Permission.query.filter(
+            Permission.name.in_(PROTECTED_PERMISSION_NAMES)
+        ).all()
+        return set(p.id for p in protected_perms)
+
+    @classmethod
+    def can_create_role(cls, actor_user: User, requested_permission_ids,
+                       role_name: str) -> ProtectionCheck:
+        """Validate a new-role creation request before it is committed.
+
+        The rule closes the privilege-escalation gap in which a
+        ``roles.manage``-only user could mint a role carrying permissions
+        they do not personally hold.
+
+        1. Malformed IDs — any non-integer ID is rejected up front.
+        2. Unknown or inactive permissions are rejected so a new role
+           cannot reference a permission that does not exist or has been
+           disabled.
+        3. Sensitive permissions (see ``PROTECTED_PERMISSION_NAMES``) may
+           only be granted by an actor who holds the admin role
+           (``ADMIN_ROLE_NAME``).  This prevents a ``roles.manage``-only
+           user from building an "admin-equivalent" role under a
+           different name — they must be an administrator to seed
+           system-management permissions into a new role.
+        4. An ``admin`` role name (case-insensitive) cannot be created by
+           a non-admin, even without sensitive permissions, because the
+           name alone would imply the admin role and the check would be
+           ambiguous with the seeded admin role.
+
+        Returns a ``ProtectionCheck``; the caller must reject the form
+        before writing the new Role row.
+        """
+        # 1. Malformed IDs.
+        normalized = []
+        for raw in (requested_permission_ids or []):
+            s = str(raw).strip()
+            if not s.isdigit():
+                check = ProtectionCheck.reject(
+                    'The submitted permission selection contains a value that is not a valid permission ID.',
+                    f'malformed_permission_id_submitted:{raw}',
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_role_creation',
+                    entity_type='role',
+                    entity_id=None,
+                    entity_repr=role_name,
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
+            normalized.append(int(s))
+
+        # 2. Exist + active.
+        submitted = cls._load_submitted_permissions(normalized)
+        if normalized:
+            found_ids = {p.id for p in submitted}
+            active_perms = [p for p in submitted if p.is_active]
+            active_ids = {p.id for p in active_perms}
+
+            missing = set(normalized) - found_ids
+            if missing:
+                check = ProtectionCheck.reject(
+                    'One or more selected permissions do not exist.',
+                    f'unknown_permission_ids:{sorted(missing)}',
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_role_creation',
+                    entity_type='role',
+                    entity_id=None,
+                    entity_repr=role_name,
+                    new_values={'unknown_permission_ids': sorted(missing)},
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
+
+            inactive = set(normalized) - active_ids
+            if inactive:
+                inactive_names = [p.name for p in submitted if p.id in inactive]
+                check = ProtectionCheck.reject(
+                    'Cannot assign inactive permission(s): ' + ', '.join(inactive_names),
+                    f'inactive_permission_ids:{sorted(inactive)}',
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_role_creation',
+                    entity_type='role',
+                    entity_id=None,
+                    entity_repr=role_name,
+                    new_values={'inactive_permission_ids': sorted(inactive),
+                                'inactive_permission_names': inactive_names},
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
+
+        # 3. Sensitive permission protection: only an admin may mint a
+        #    new role carrying any of PROTECTED_PERMISSION_NAMES.
+        actor_is_admin = actor_user.has_role(ADMIN_ROLE_NAME)
+        if not actor_is_admin and normalized:
+            protected_ids = cls._protected_permission_ids()
+            requested_protected = set(normalized) & protected_ids
+            if requested_protected:
+                check = ProtectionCheck.reject(
+                    'Only administrators may create a role that includes sensitive '
+                    'system-management permissions.',
+                    'sensitive_permission_escalation_blocked',
+                )
+                cls._log_blocked(
+                    user_id=actor_user.id,
+                    action='blocked_role_creation',
+                    entity_type='role',
+                    entity_id=None,
+                    entity_repr=role_name,
+                    new_values={'requested_protected_permission_ids': sorted(requested_protected)},
+                    error_message=check.audit_reason,
+                    severity='warning',
+                    category='security',
+                )
+                return check
+
+        # 4. Admin role name guard: no non-admin may create a role whose
+        #    normalized name matches ADMIN_ROLE_NAME.
+        if not actor_is_admin and str(role_name).casefold() == ADMIN_ROLE_NAME.casefold():
+            check = ProtectionCheck.reject(
+                'Only administrators may create a role named "admin".',
+                'admin_role_name_escalation_blocked',
+            )
+            cls._log_blocked(
+                user_id=actor_user.id,
+                action='blocked_role_creation',
+                entity_type='role',
+                entity_id=None,
+                entity_repr=role_name,
+                error_message=check.audit_reason,
+                severity='warning',
+                category='security',
+            )
+            return check
 
         return ProtectionCheck.allow()

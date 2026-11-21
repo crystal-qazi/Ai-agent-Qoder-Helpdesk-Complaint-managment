@@ -232,91 +232,151 @@ class ComplaintService:
     
     @classmethod
     def assign_complaint(cls, complaint, new_assignee_id, current_user, reason=None, notes=None):
-        """Assign or reassign a complaint."""
+        """Assign or reassign a complaint atomically.
+
+        All writes (assignment row, complaint updates, auto-transition
+        status change, history row, notifications and audit log) happen
+        inside a single transaction that is committed exactly once at
+        the end.  Any exception anywhere in the body rolls back the
+        *entire* operation so no partial state is left behind.  The
+        status auto-transition uses the commit-free internal helper so
+        it does not split the transaction.
+        """
         previous_assignee_id = complaint.assigned_to_user_id
         
         if previous_assignee_id == new_assignee_id:
             return False, 'Complaint is already assigned to this user.'
         
-        # Create assignment record
-        assignment = ComplaintAssignment(
-            complaint_id=complaint.id,
-            previous_assignee_id=previous_assignee_id,
-            new_assignee_id=new_assignee_id,
-            assigned_by_user_id=current_user.id,
-            assignment_reason=reason,
-            notes=notes,
-            assigned_at=datetime.utcnow(),
-        )
-        db.session.add(assignment)
-        
-        # Update complaint
-        old_assignee = complaint.assigned_to
-        complaint.assigned_to_user_id = new_assignee_id
-        complaint.assigned_at = datetime.utcnow()
-        complaint.updated_by_user_id = current_user.id
-        
-        if complaint.status and complaint.status.code == 'new':
-            # Auto-transition to assigned if in new status
-            assigned_status = Status.query.filter_by(code='assigned', is_active=True).first()
-            if assigned_status:
-                cls.change_status(complaint, assigned_status.id, current_user, reason='Auto-assigned')
-        
-        # Create history record
-        history = ComplaintHistory(
-            complaint_id=complaint.id,
-            user_id=current_user.id,
-            action='assigned' if not previous_assignee_id else 'reassigned',
-            old_value=str(previous_assignee_id) if previous_assignee_id else None,
-            new_value=str(new_assignee_id),
-            description=f'Complaint {"assigned" if not previous_assignee_id else "reassigned"} to user {new_assignee_id}',
-            created_at=datetime.utcnow(),
-        )
-        db.session.add(history)
-        
-        # Send notifications
-        NotificationService.notify_assignment(complaint, current_user, previous_assignee_id)
-        
-        # Log audit
-        AuditService.log_action(
-            user_id=current_user.id,
-            action='assign_complaint' if not previous_assignee_id else 'reassign_complaint',
-            entity_type='complaint',
-            entity_id=complaint.id,
-            entity_repr=complaint.complaint_number,
-            old_values={'assigned_to': previous_assignee_id},
-            new_values={'assigned_to': new_assignee_id},
-            category='data',
-        )
-        
-        db.session.commit()
+        try:
+            # Create assignment record
+            assignment = ComplaintAssignment(
+                complaint_id=complaint.id,
+                previous_assignee_id=previous_assignee_id,
+                new_assignee_id=new_assignee_id,
+                assigned_by_user_id=current_user.id,
+                assignment_reason=reason,
+                notes=notes,
+                assigned_at=datetime.utcnow(),
+            )
+            db.session.add(assignment)
+            
+            # Update complaint
+            complaint.assigned_to_user_id = new_assignee_id
+            complaint.assigned_at = datetime.utcnow()
+            complaint.updated_by_user_id = current_user.id
+            
+            # Auto-transition to assigned if in new status.  Uses the
+            # commit-free helper so the transaction stays open until
+            # ``assign_complaint`` commits it.  ``change_status`` is the
+            # public standalone entry point; internal callers must never
+            # invoke it directly because its terminal commit would split
+            # the assignment work into two independent transactions.
+            if complaint.status and complaint.status.code == 'new':
+                assigned_status = Status.query.filter_by(code='assigned', is_active=True).first()
+                if assigned_status:
+                    cls._change_status_internal(
+                        complaint, assigned_status.id, current_user,
+                        reason='Auto-assigned',
+                    )
+            
+            # Create history record
+            history = ComplaintHistory(
+                complaint_id=complaint.id,
+                user_id=current_user.id,
+                action='assigned' if not previous_assignee_id else 'reassigned',
+                old_value=str(previous_assignee_id) if previous_assignee_id else None,
+                new_value=str(new_assignee_id),
+                description=f'Complaint {"assigned" if not previous_assignee_id else "reassigned"} to user {new_assignee_id}',
+                created_at=datetime.utcnow(),
+            )
+            db.session.add(history)
+            
+            # Send notifications
+            NotificationService.notify_assignment(complaint, current_user, previous_assignee_id)
+            
+            # Log audit
+            AuditService.log_action(
+                user_id=current_user.id,
+                action='assign_complaint' if not previous_assignee_id else 'reassign_complaint',
+                entity_type='complaint',
+                entity_id=complaint.id,
+                entity_repr=complaint.complaint_number,
+                old_values={'assigned_to': previous_assignee_id},
+                new_values={'assigned_to': new_assignee_id},
+                category='data',
+            )
+            
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            raise
         return True, 'Complaint assigned successfully.'
     
     @classmethod
     def change_status(cls, complaint, new_status_id, current_user, reason=None, resolution_summary=None):
-        """Change complaint status with validation."""
+        """Change complaint status with validation.
+
+        This is the *standalone* public entry point.  Internally it calls
+        the commit-free ``_change_status_internal`` helper, then commits
+        the single transaction so that any external caller that owns the
+        surrounding work (e.g. ``assign_complaint``) is NOT affected.
+        """
+        success, message = cls._change_status_internal(
+            complaint, new_status_id, current_user,
+            reason=reason, resolution_summary=resolution_summary,
+            commit=True,
+        )
+        return success, message
+
+    @classmethod
+    def _change_status_internal(cls, complaint, new_status_id, current_user,
+                                reason=None, resolution_summary=None,
+                                commit=False):
+        """Commit-free status transition work.
+
+        Performs every status-change side-effect (validation, history
+        row, timestamps, SLA recompute, notifications, audit) inside
+        the caller's transaction.  ``commit`` controls whether the
+        caller commits at the end.
+
+        Callers that are the owner of the surrounding transaction
+        (``assign_complaint``) pass ``commit=False`` so the caller
+        decides when to commit, ensuring the whole operation is atomic.
+        The public ``change_status`` passes ``commit=True`` for
+        standalone use.
+        """
         from app.permissions.policy import PermissionPolicy
         
         new_status = Status.query.get(new_status_id)
         if not new_status:
+            if commit:
+                db.session.rollback()
             return False, 'Invalid status.'
         
         old_status = complaint.status
         
         # Validate transition
         if old_status and not old_status.can_transition_to(new_status_id):
+            if commit:
+                db.session.rollback()
             return False, f'Transition from "{old_status.name}" to "{new_status.name}" is not allowed.'
         
         # Check permission
         if not PermissionPolicy.can_change_status(current_user, complaint, new_status):
+            if commit:
+                db.session.rollback()
             return False, 'You do not have permission to change to this status.'
         
         # Check required fields
         if new_status.requires_reason and not reason:
+            if commit:
+                db.session.rollback()
             return False, f'Reason is required for status "{new_status.name}".'
         
         if new_status.requires_resolution and new_status.code in ('resolved', 'closed'):
             if not resolution_summary and not complaint.resolution_summary:
+                if commit:
+                    db.session.rollback()
                 return False, 'Resolution summary is required for this status.'
             if resolution_summary:
                 complaint.resolution_summary = resolution_summary
@@ -388,7 +448,8 @@ class ComplaintService:
             category='data',
         )
         
-        db.session.commit()
+        if commit:
+            db.session.commit()
         return True, f'Status changed to {new_status.name}.'
     
     @classmethod
